@@ -40,46 +40,66 @@ def gerenciar_rede(rede):
     rede.shunt = rede.shunt.sort_index()
     rede.trafo = rede.trafo.sort_index()
     
+    #num_trafo_controlado: variavel para armazenar o número de trafos com controle de tap
+    num_trafo_controlado = rede.trafo.tap_pos.count()
+    
+    #num_barras : variavel utilizada para salvar o numero de barras do sistema
+    num_barras = rede.bus.name.count()
+    
+    #num_shunt: variavel para armazenar o numero de shunts do sistema
+    num_shunt = rede.shunt.in_service.count()
+    
+    #num_gen: variavel para armazenar o número de barras geradoras do sistema
+    num_gen = rede.gen.in_service.count()
+    
+    '''
+    Muda os valores máximos e mínimos permitidos das tensões das barras dos sistemas de 118 e 300 barras:
+        min_vm_pu: 0.94 -> 0.90
+        max_vm_pu: 1.06 -> 1.10
+    '''
+    if num_barras == 118 or num_barras == 300:
+        rede.bus.min_vm_pu = 0.90
+        rede.bus.max_vm_pu = 1.10
     
     #Dicionário que contem os valores dos shunts para cada sistema IEEE
-    valores_shunts = {"14": np.array([0, 0.19, 0.34, 0.39]),
-                      "30": np.array([[0, 0.19, 0.34, 0.39],
-                                      [0, 0.05, 0.09]]),
-                      "57": np.array([[0, 0.12, 0.22, 0.27], 
-                                      [0, 0.04, 0.07, 0.09], 
-                                      [0, 0.1, 0.165]]),
-                      "118": np.array([[-0.4, 0],
-                                       [0, 0.06, 0.07, 0.13, 0.14, 0.2],
-                                       [-0.25, 0],
-                                       [0, 0.1],
-                                       [0, 0.1],
-                                       [0, 0.1],
-                                       [0, 0.15],
-                                       [0, 0.08, 0.12, 0.2],
-                                       [0, 0.1, 0.2],
-                                       [0, 0.1, 0.2],
-                                       [0, 0.1, 0.2],
-                                       [0, 0.1, 0.2],
-                                       [0, 0.06, 0.07, 0.13, 0.14, 0.2],
-                                       [0, 0.06, 0.07, 0.13, 0.14, 0.2]]),
-                      "300": np.array([[0, 2, 3.5, 4.5],
-                                       [0, 0.25, 0.44, 0.59],
-                                       [0, 0.19, 0.34, 0.39],
-                                       [-4.5, 0],
-                                       [-4.5, 0],
-                                       [0, 0.25, 0.44, 0.59],
-                                       [0, 0.25, 0.44, 0.59],
-                                       [-2.5, 0],
-                                       [-4.5, 0],
-                                       [-4.5, 0],
-                                       [-1.5, 0],
-                                       [0, 0.25, 0.44, 0.59],
-                                       [0, 0,15],
-                                       [0, 0.15]])
+    valores_shunts = {"14": [[0, 0.19, 0.34, 0.39]],
+                      "30": [[0, 0.19, 0.34, 0.39],
+                             [0, 0.05, 0.09]],
+                      "57": [[0, 0.12, 0.22, 0.27], 
+                             [0, 0.04, 0.07, 0.09], 
+                             [0, 0.1, 0.165]],
+                      "118": [[-0.4, 0],
+                              [0, 0.06, 0.07, 0.13, 0.14, 0.2],
+                              [-0.25, 0],
+                              [0, 0.1],
+                              [0, 0.1],
+                              [0, 0.1],
+                              [0, 0.15],
+                              [0, 0.08, 0.12, 0.2],
+                              [0, 0.1, 0.2],
+                              [0, 0.1, 0.2],
+                              [0, 0.1, 0.2],
+                              [0, 0.1, 0.2],
+                              [0, 0.06, 0.07, 0.13, 0.14, 0.2],
+                              [0, 0.06, 0.07, 0.13, 0.14, 0.2]],
+                      "300": [[0, 2, 3.5, 4.5],
+                              [0, 0.25, 0.44, 0.59],
+                              [0, 0.19, 0.34, 0.39],
+                              [-4.5, 0],
+                              [-4.5, 0],
+                              [0, 0.25, 0.44, 0.59],
+                              [0, 0.25, 0.44, 0.59],
+                              [-2.5, 0],
+                              [-4.5, 0],
+                              [-4.5, 0],
+                              [-1.5, 0],
+                              [0, 0.25, 0.44, 0.59],
+                              [0, 0,15],
+                              [0, 0.15]]
                       }
     
     #Vetor que contém os valores discretos que os taps podem assumir
-    #Observar se o shape (11,) não trará problemas
+    #Precisa ser um tensor de rank 1 para que a alcateia possa ser inicializada
     valores_taps = np.arange(start = 0.9, stop = 1.1, step = 0.00625)
     
     """
@@ -92,6 +112,7 @@ def gerenciar_rede(rede):
     x_pu = x_ohm/z_base
     g = r_pu/(r_pu^2 + x_pu^2)
     """
+    
     linhas = np.zeros((4, rede.line.index[-1]+1))
     linhas[0] = rede.line.from_bus.to_numpy()
     linhas[1] = rede.line.to_bus.to_numpy()
@@ -104,9 +125,11 @@ def gerenciar_rede(rede):
     
     #Vetor G_rede com as condutâncias das linhas de transmissão
     G_rede = np.zeros((1, rede.line.index[-1]+1))
-    G_rede = np.divide(linhas[2], np.power(linhas[2],2)+np.power(linhas[3],2))
+    G_rede = np.array([np.divide(linhas[2], np.power(linhas[2],2)+np.power(linhas[3],2))])
     
-    
+    #Matriz de condutância nodal da rede. É equivalente à parte real da matriz de admintância nodal do sistema
+    matriz_G = np.zeros((num_barras,num_barras))
+    matriz_G[linhas[0].astype(np.int), linhas[1].astype(np.int)] = G_rede 
     
     """
     O primeiro lobo (agente de busca) será inicializado com os valores de operação da rede fornecidos
@@ -119,15 +142,6 @@ def gerenciar_rede(rede):
     e armazenar no vetor lobo_1
     """
     
-    #num_trafo_controlado: variavel para armazenar o número de trafos com controle de tap
-    num_trafo_controlado = rede.trafo.tap_pos.count()
-    
-    #num_barras : variavel utilizada para salvar o numero de barras do sistema
-    num_barras = rede.bus.name.count()
-    
-    #num_shunt: variavel para armazenar o numero de shunts do sistema
-    num_shunt = rede.shunt.in_service.count()
-    
     v_temp = rede.gen.vm_pu.to_numpy(dtype = 'float64')
     
     taps_temp = 1 + ((rede.trafo.tap_pos.to_numpy()[0:num_trafo_controlado] +\
@@ -138,10 +152,7 @@ def gerenciar_rede(rede):
     
     lobo_1 = np.array([np.concatenate((v_temp, taps_temp, shunt_temp),axis=0)])
     del v_temp, taps_temp, shunt_temp
-    
-    matriz_G = np.zeros((num_barras,num_barras))
-    matriz_G[linhas[0].astype(np.int), linhas[1].astype(np.int)] = G_rede 
-    
+      
     parametros_rede = {"Linhas": linhas,
                        "G": G_rede,
                        "Lobo1": lobo_1,
@@ -150,8 +161,8 @@ def gerenciar_rede(rede):
                        "num_barras": num_barras,
                        "num_trafo_controlado": num_trafo_controlado,
                        "num_shunt": num_shunt,
+                       "num_gen": num_gen,
                        "matriz_G": matriz_G}
-    
 
     return parametros_rede
     
@@ -193,10 +204,68 @@ def penalidade_senoidal_tap(agente):
 def penalidade_senoidal_shunt(agente):
     pass
 
-def inicializar_alcateia(n_lobos, dim, t_max):
-    pass
+def inicializar_alcateia(n_lobos, parametros_rede):
+    '''
+    Esta função inicializa a alcateia de lobos (agentes de busca) como uma matriz (numpy array) com formato (dim+6, n_lobos)
+    
+        -> Cada coluna da matriz representa um lobo.
+        -> As linhas de 0 a dim são as variáveis do problema.
+        -> A linha dim+1 armazena a função fitness para cada lobo;
+        -> A linha dim+2 armazena a função objetivo para cada lobo;
+        -> A linha dim+3 armazena um caracter que indica a posição hierárquica do lobo:
+            + 1 = lobo alfa;
+            + 2 = lobo beta;
+            + 3 = lobo delta;
+            + 4 = lobo omega.
+        -> A linha dim+4 armazena a penalidade dos taps para cada lobo;
+        -> A linha dim+5 armazena a penalidade dos shunts para cada lobo;
+        -> A linha dim+6 armazena a penalidade das tensões para cada lobo;
+        
+    Inputs:
+        -> n_lobos = número de agentes de busca;
+        -> parametros_rede - obtido via função gerenciar_rede
+    
+    Output:
+        -> Alcateia
+    '''
+    nb = parametros_rede["num_barras"]
+    nt = parametros_rede["num_trafo_controlado"]
+    ns = parametros_rede["num_shunt"]
+    ng = parametros_rede["num_gen"]
+    
+    #Variável que armazena o número de variáveis do problema
+    dim = ng+nt+ns
+    
+    #Inicialização da Alcateia com zeros
+    alcateia = np.zeros((dim+6, n_lobos))
+    
+    #Inicialização aleatória das variáveis contínuas (tensões das barras geradoras) a partir de uma distribuição normal
+    alcateia[:ng, :] = np.random.uniform(rede.bus.min_vm_pu[0], rede.bus.max_vm_pu[1], size=(ng,n_lobos))
+    
+    #Inicialização dos taps dos transformadores a partir da escolha aleatória dentro dos valores discretos permitidos
+    alcateia[ng:ng+nt, :] = np.random.choice(parametros_rede["Valores_taps"], size =(nt, n_lobos))
+    
+    #Inicialização dos shunts das barras a partir da escolha aleatória dentro dos valores discretos permitidos
+    #Não consegui escapar do loop de for aqui ainda =/
+    for i in range(ns):
+        alcateia[ng+nt+i, :] = np.random.choice(parametros_rede["Valores_shunts"][str(nb)][i], size = (ns,n_lobos))
+    
+    #Inicializar a função fitness e a função objetivo de cada lobo
+    alcateia[dim:dim+2, :] = np.inf
+    
+    #Inicializar a posição de cada lobo como delta
+    alcateia[dim+2, :] = 4
+    
+    #Inicializar as penalidades de cada lobo
+    alcateia[dim+3:, :] = 0
+    
+    #Inserir o lobo_1
+    alcateia[:dim, 0] = parametros_rede["Lobo1"]
+    
+    return alcateia
 
-def otimizar_alcateia(f_obj, pen_v, pen_tap, pen_shunt, lbd):
+
+def otimizar_alcateia(f_obj, pen_v, pen_tap, pen_shunt, lbd, t_max):
     pass
 
 def visualizar_resultados():
@@ -204,7 +273,7 @@ def visualizar_resultados():
 
 
 """
-----------------------------------------------------------TESTES ---------------------------------------------------------
+---------------------------------------------------------- TESTES ---------------------------------------------------------
 """
 def a():
     
@@ -295,6 +364,7 @@ def a():
 
 r1 = gerenciar_rede(rede)
 pp.runpp(rede, algorithm='fdbx')
+alcateia = inicializar_alcateia(12, r1)
 
 
 
