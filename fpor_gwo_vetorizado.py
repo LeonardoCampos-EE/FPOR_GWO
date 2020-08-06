@@ -40,6 +40,8 @@ def gerenciar_rede(rede):
     rede.shunt = rede.shunt.sort_index()
     rede.trafo = rede.trafo.sort_index()
     
+    
+    
     #num_trafo_controlado: variavel para armazenar o número de trafos com controle de tap
     num_trafo_controlado = rede.trafo.tap_pos.count()
     
@@ -51,6 +53,14 @@ def gerenciar_rede(rede):
     
     #num_gen: variavel para armazenar o número de barras geradoras do sistema
     num_gen = rede.gen.in_service.count()
+    
+    '''
+    Cria as varíaveis globais nb, nt, ns, ng para facilitar o uso desses parâmetros em outros funções
+    
+    *Potencialmente desastroso*
+    '''
+    global nb, nt, ns, ng
+    nb, nt, ns, ng = num_barras, num_trafo_controlado, num_shunt, num_gen
     
     '''
     Muda os valores máximos e mínimos permitidos das tensões das barras dos sistemas de 118 e 300 barras:
@@ -98,9 +108,11 @@ def gerenciar_rede(rede):
                               [0, 0.15]]
                       }
     
-    #Vetor que contém os valores discretos que os taps podem assumir
+    #Vetor que contém os valores discretos dos taps: entre 0.9 e 1.1 com passo = tap_step
     #Precisa ser um tensor de rank 1 para que a alcateia possa ser inicializada
-    valores_taps = np.arange(start = 0.9, stop = 1.1, step = 0.00625)
+    global tap_step
+    tap_step = 0.00625
+    valores_taps = np.arange(start = 0.9, stop = 1.1, step = tap_step)
     
     """
     Matriz contendo as linhas de transmissão da rede:
@@ -171,7 +183,6 @@ def gerenciar_rede(rede):
 def fluxo_de_carga(rede, agente):
     pass
 
-
 def funcao_objetivo(rede, matriz_G):
     """
     O objetivo desta função é calcular a função objetivo para o problema de FPOR.
@@ -198,9 +209,38 @@ def funcao_objetivo(rede, matriz_G):
 def penalidade_v(rede, agente):
     pass
 
-def penalidade_senoidal_tap(agente):
-    pass
+#Testada em um notebook
+def penalidade_senoidal_tap(alcateia):
+    '''
+    Esta função retorna a penalidade senoidal sobre os taps dos transformadores para toda a alcateia.
+    Dado um tap t e um passo discreto s, a função penalidade senoidal é dada por:
+        pen_sen_tap = sum {sen^2(t*pi/s)}    
     
+    Inputs:
+        -> alcateia
+        
+    Outputs:
+        -> pen_taps: um vetor cuja forma é (1, n_lobos) contendo as penalizações referentes aos taps para toda a alcateia
+    '''
+    
+    #Variável para receber os taps de todos os lobos
+    taps = alcateia[ng:ng+nt, :]
+    
+    #Variável para armazenar as penalidades referentes aos taps de todos os lobos
+    pen_taps = np.array(np.zeros((1, alcateia.shape[1])))
+    
+    #Executa a equação da penalização sem efetuar a soma
+    taps = np.power(np.sin(taps*np.pi/tap_step) , 2)
+    
+    #Executa a soma ao longo das colunas da variável taps
+    pen_taps = np.sum(taps, axis=0)
+    
+    #Deleta a variável taps
+    del taps
+    
+    return pen_taps
+
+
 def penalidade_senoidal_shunt(agente):
     pass
 
@@ -228,10 +268,10 @@ def inicializar_alcateia(n_lobos, parametros_rede):
     Output:
         -> Alcateia
     '''
-    nb = parametros_rede["num_barras"]
-    nt = parametros_rede["num_trafo_controlado"]
-    ns = parametros_rede["num_shunt"]
-    ng = parametros_rede["num_gen"]
+    # nb = parametros_rede["num_barras"]
+    # nt = parametros_rede["num_trafo_controlado"]
+    # ns = parametros_rede["num_shunt"]
+    # ng = parametros_rede["num_gen"]
     
     #Variável que armazena o número de variáveis do problema
     dim = ng+nt+ns
