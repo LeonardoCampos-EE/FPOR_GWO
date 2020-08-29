@@ -5,8 +5,61 @@ import timeit
 import copy
 
 
-rede = pn.case14()
+'''--------------------------------------------- Funções auxiliares ---------------------------------------------------'''
+'''
+Ver 
 
+-> https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array/2566508
+-> https://numpy.org/doc/stable/reference/generated/numpy.searchsorted.html
+'''
+
+def teste():
+    lst = [1.5, 2.5, 3.5, 4.5]
+    valores = [1, 2, 3, 4, 5]
+    for valor in valores:
+        print('Sup: {}'.format(discreto_superior(valor, lst)))
+        print('Inf: {}'.format(discreto_inferior(valor, lst)))
+
+#Até agora, parece que funciona
+def discreto_superior(valor, lista):
+    '''
+    Função que retorna o valor discreto superior mais próximo de x em uma lista
+    
+    Inputs:
+        -> valor = número real
+        -> lista = numpy.array
+    
+    Ouputs:
+        -> valor discreto de superior de 'lista' mais próximo de 'valor'
+    '''
+    #Garante que a lista seja uma array numpy
+    lista = np.asarray(lista, dtype = np.float32)
+    
+    if valor >= lista[-1]:
+        return lista[-1]
+    else:
+        return np.squeeze(lista[np.searchsorted(a=lista, v=np.array([valor]), side = 'right')])
+
+def discreto_inferior(valor, lista):
+    '''
+    Função que retorna o valor discreto inferior mais próximo de x em uma lista
+    
+    Inputs:
+        -> valor = número real
+        -> lista = numpy.array
+    
+    Ouputs:
+        -> valor discreto inferior de 'lista' mais próximo de 'valor'
+    '''
+    lista = np.asarray(lista, dtype = np.float32)
+    
+    if valor <= lista[0]:
+        return lista[0]
+    else:
+        return np.squeeze(lista[np.searchsorted(a=lista, v=np.array([valor]), side = 'left') - 1])
+    
+
+'''--------------------------------------------- Funções principais ---------------------------------------------------'''
 
 def gerenciar_rede(rede):
     
@@ -183,14 +236,27 @@ def gerenciar_rede(rede):
 def fluxo_de_carga(rede, agente):
     pass
 
-def funcao_objetivo(rede, matriz_G):
+def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     """
-    O objetivo desta função é calcular a função objetivo para o problema de FPOR.
+    E função  calcula a função objetivo para o problema de FPOR e também calcula
+    a penalização das tensões que ultrapassam o limite superior ou ficam abaixo do limite
+    inferior.
+    
     A função objetivo deste problema dá as perdas de potência ativa no SEP.
     
     f = sum g_km * [v_k^2 + v_m^2 - 2*v_k*v_m*cos(theta_k - theta_m)]
     
+    A penalização das tensões é:
+        
+    pen_v = sum(v - v_lim)^2
+        v_lim = v_lim_sup, se v > v_lim_sup
+        v_lim = v, se v_lim_inf < v < v_lim_sup
+        v_lim = v_lim_inf, se v < v_lim_inf
+    
     """
+    #Talvez tenha uma melhor implementação de pen_v
+    
+    
     v_k = np.array([rede.res_bus.vm_pu.to_numpy(dtype = np.float64)])
     v_m = v_k.T
     
@@ -203,11 +269,22 @@ def funcao_objetivo(rede, matriz_G):
     
     f=np.squeeze(np.sum(np.array([f[np.nonzero(f)]])))
     
-    return f
+    #Tensões que ultrapassaram o limite superior
+    v_up = np.multiply(v_k, np.greater(v_k, v_lim_sup))
+    
+    #Limites ultrapassados
+    v_lim_up = np.multiply(v_lim_sup, np.greater(v_k, v_lim_sup))
+    
+    #Tensões que estão abaixo do limite inferior
+    v_down = np.multiply(v_k, np.less(v_k, v_lim_inf))
+    
+    #Limites violados
+    v_lim_down = np.multiply(v_lim_inf, np.greater(v_k, v_lim_inf))
+    
+    pen_v = np.squeeze(np.sum(np.square(v_up - v_lim_up) + np.square(v_down - v_lim_down)))
+    
+    return f, pen_v
 
-
-def penalidade_v(rede, agente):
-    pass
 
 #Testada em um notebook
 def penalidade_senoidal_tap(alcateia):
@@ -241,7 +318,7 @@ def penalidade_senoidal_tap(alcateia):
     return pen_taps
 
 
-def penalidade_senoidal_shunt(agente):
+def penalidade_senoidal_shunt(alcateia):
     pass
 
 def inicializar_alcateia(n_lobos, parametros_rede):
@@ -402,9 +479,10 @@ def a():
     # print("F_obj 2: " + str(vec2) + " s")
     return 0
 
-r1 = gerenciar_rede(rede)
-pp.runpp(rede, algorithm='fdbx')
-alcateia = inicializar_alcateia(12, r1)
+# rede = pn.case14()
+# r1 = gerenciar_rede(rede)
+# pp.runpp(rede, algorithm='fdbx')
+# alcateia = inicializar_alcateia(12, r1)
 
 
 
