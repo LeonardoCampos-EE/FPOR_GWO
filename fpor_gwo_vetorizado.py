@@ -6,58 +6,100 @@ import copy
 
 
 '''--------------------------------------------- Funções auxiliares ---------------------------------------------------'''
-'''
-Ver 
 
--> https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array/2566508
--> https://numpy.org/doc/stable/reference/generated/numpy.searchsorted.html
-'''
 
-def teste():
-    lst = [1.5, 2.5, 3.5, 4.5]
-    valores = [1, 2, 3, 4, 5]
-    for valor in valores:
-        print('Sup: {}'.format(discreto_superior(valor, lst)))
-        print('Inf: {}'.format(discreto_inferior(valor, lst)))
-
-#Até agora, parece que funciona
-def discreto_superior(valor, lista):
+def discreto_superior(vetor_x, lista_discretos):
     '''
-    Função que retorna o valor discreto superior mais próximo de x em uma lista
-    
+    Função que retorna o valor discreto superior de 'lista_discretos' mais próximo de todos os valores x de 'vetor_x' 
+
     Inputs:
-        -> valor = número real
-        -> lista = numpy.array
+        -> vetor_x = vetor (numpy array) contendo os valores que deseja-se obter o número discreto mais próximos
+        -> lista_discretos = lista (python list) que contém o conjunto de valores discretos que cada variável x admite
     
     Ouputs:
-        -> valor discreto de superior de 'lista' mais próximo de 'valor'
+        -> x_sup = vetor (numpy array) contendo os valores discretos superiores de 'lista_discretos' mais próximo 
+           dos valores de 'vetor_x'
     '''
-    #Garante que a lista seja uma array numpy
-    lista = np.asarray(lista, dtype = np.float32)
+    #Vetor de saída da função. Possui o mesmo formato (shape) que vetor_x
+    x_sup = np.zeros(vetor_x.shape)
     
-    if valor >= lista[-1]:
-        return lista[-1]
-    else:
-        return np.squeeze(lista[np.searchsorted(a=lista, v=np.array([valor]), side = 'right')])
-
-def discreto_inferior(valor, lista):
+    #Cópia de 'vetor_x'. Esta cópia é feita para evitar erros de alocamento dinâmico de memória.
+    vetor = np.copy(vetor_x)
+    
+    #GAMBIARRA SEM A QUAL O CÓDIGO NÃO FUNCIONA PROS VALORES DE 'vetor_x' que pertençam a 'lista_discretos'
+    #vetor = vetor + 1e-3
+    
+    #Garante que a lista seja uma array numpy e armazena o resultado na variável 'lista'
+    lista = np.asarray(lista_discretos, dtype = np.float32)
+    
     '''
-    Função que retorna o valor discreto inferior mais próximo de x em uma lista
+    Garante que os valores de 'vetor_x' estejam dentro dos limites de 'lista discretos' por um pequeno fator de 10^-3.
+    Caso contrário, a função numpy.searchsorted descrita a frente resultará em erro.
+    '''
+    np.clip(a = vetor, a_min = lista[0]+1e-3, a_max = lista[-1]-1e-3, out = vetor)
+    
+    '''
+    Utilizando a função numpy.searchsorted() para buscar os índices de 'lista_discretos' que correspondem aos valores
+    discretos superiores aos valores de 'vetor_x'
+    '''
+    indices = np.searchsorted(a=lista, v = vetor, side='right')
+    
+    #Armazena os valores de 'lista_discretos' cujos índices correspondem aos discretos superiores de 'vetor_x'
+    x_sup = np.take(lista, indices)
+    
+    #Deleta as variáveis locais
+    del vetor, lista, indices
+    
+    return x_sup
+
+def discreto_inferior(vetor_x, lista_discretos):
+    '''
+    Função que retorna o valor discreto inferior de 'lista_discretos' mais próximo de todos os valores x de 'vetor_x' 
     
     Inputs:
-        -> valor = número real
-        -> lista = numpy.array
+        -> vetor_x = vetor (numpy array) contendo os valores que deseja-se obter o número discreto mais próximo
+        -> lista_discretos = lista (python list) que contém o conjunto de valores discretos que cada variável x admite
     
     Ouputs:
-        -> valor discreto inferior de 'lista' mais próximo de 'valor'
+        -> x_inf = vetor (numpy array) contendo os valores discretos inferiores de 'lista_discretos' mais próximos 
+           dos valores de 'vetor_x'
     '''
-    lista = np.asarray(lista, dtype = np.float32)
     
-    if valor <= lista[0]:
-        return lista[0]
-    else:
-        return np.squeeze(lista[np.searchsorted(a=lista, v=np.array([valor]), side = 'left') - 1])
+    #Vetor de saída da função. Possui o mesmo formato (shape) que vetor_x
+    x_inf = np.zeros(vetor_x.shape)
     
+    #Cópia de 'vetor_x'. Esta cópia é feita para evitar erros de alocamento dinâmico de memória.
+    vetor = np.copy(vetor_x)
+    
+    #GAMBIARRA SEM A QUAL O CÓDIGO NÃO FUNCIONA PROS VALORES DE 'vetor_x' que pertençam a 'lista_discretos'
+    #vetor = vetor - 1e-3
+    
+    #Garante que a lista seja uma array numpy e salva o resultado na variável local 'lista'
+    lista = np.asarray(lista_discretos, dtype = np.float32)
+    
+    '''
+    Garante que os valores de 'vetor_x' estejam dentro dos limites de 'lista discretos' por um pequeno fator de 10^-3.
+    Caso contrário, a função numpy.searchsorted descrita a frente resultará em erro. Salva o resultado de numpy.clip
+    na variável local 'vetor'
+    '''
+    np.clip(a = vetor, a_min = lista_discretos[0]+1e-3, a_max = lista_discretos[-1]-1e-3, out = vetor)
+    '''[np.nonzero(vetor)]'''
+    
+    
+    '''
+    Utilizando a função numpy.searchsorted() para buscar os índices de 'lista_discretos' que correspondem aos valores
+    discretos inferiores aos valores de 'vetor_x'
+    '''
+    indices = np.searchsorted(a=lista, v = vetor, side='left') - 1
+    
+    #Armazena os valores de 'lista_discretos' cujos índices correspondem aos discretos superiores de 'vetor_x'
+    x_inf = np.take(lista, indices)
+    
+    #Deleta as variáveis locais
+    del vetor, lista, indices
+    
+    return x_inf
+
 
 '''--------------------------------------------- Funções principais ---------------------------------------------------'''
 
@@ -232,10 +274,6 @@ def gerenciar_rede(rede):
     return parametros_rede
     
 
-
-def fluxo_de_carga(rede, agente):
-    pass
-
 def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     """
     E função  calcula a função objetivo para o problema de FPOR e também calcula
@@ -286,8 +324,7 @@ def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     return f, pen_v
 
 
-#Testada em um notebook
-def penalidade_senoidal_tap(alcateia):
+def penalidade_senoidal_tap(alcateia = None, DEBUG = False, vec_debug = None):
     '''
     Esta função retorna a penalidade senoidal sobre os taps dos transformadores para toda a alcateia.
     Dado um tap t e um passo discreto s, a função penalidade senoidal é dada por:
@@ -297,31 +334,98 @@ def penalidade_senoidal_tap(alcateia):
         -> alcateia
         
     Outputs:
-        -> pen_taps: um vetor cuja forma é (1, n_lobos) contendo as penalizações referentes aos taps para toda a alcateia
+        -> pen_taps: um vetor cuja forma é (nt, n_lobos) contendo as penalizações referentes aos taps para toda a alcateia
     '''
-    
-    #Variável para receber os taps de todos os lobos
-    taps = alcateia[ng:ng+nt, :]
-    
-    #Variável para armazenar as penalidades referentes aos taps de todos os lobos
-    pen_taps = np.array(np.zeros((1, alcateia.shape[1])))
+    if DEBUG:
+        taps = vec_debug
+        pen_taps = np.zeros(shape = vec_debug.shape)
+    else:
+        #Variável para receber os taps de todos os lobos
+        taps = alcateia[ng:ng+nt, :]
+        #Variável para armazenar as penalidades referentes aos taps de todos os lobos
+        pen_taps = np.array(np.zeros((1, alcateia.shape[1])))
     
     #Executa a equação da penalização sem efetuar a soma
-    taps = np.power(np.sin(taps*np.pi/tap_step) , 2)
+    taps = np.square(np.sin(taps*np.pi/tap_step))
+    pen_taps = taps
     
-    #Executa a soma ao longo das colunas da variável taps
-    pen_taps = np.sum(taps, axis=0)
+    if not DEBUG:
+        #Executa a soma ao longo das colunas da variável taps
+        pen_taps = np.sum(taps, axis=0)
     
+    threshold = np.less_equal(pen_taps, 1e-15)
+    pen_taps[threshold] = 0.0
+
     #Deleta a variável taps
     del taps
     
     return pen_taps
 
+def penalidade_senoidal_shunt(conjunto_shunts, alcateia = None, DEBUG = False, vec_debug = None):
+    '''
+    Esta função retorna a penalidade senoidal sobre os shunts de toda a 
+    alcateia.
+    
+    Seja 'conjunto' a lista de valores discretos que o shunt admite: 
+        conjunto = [b_1, b_2, b_3, b_4].
+    Seja b um shunt
+    
+    A função pen_sen_shunt deve ser nula caso 'b' pertença a 'conjunto' e 
+    maior que 0 caso contrário.
+    
+    Define-se a variável a função pen_sen_shunt para o caso de um único shunt b como:
+        
+        pen_sen_shunt = sen[ pi * (b /(b_sup - b_inf)) + alfa ]
+    
+    Onde:
+        - b_sup: é o valor discreto superior mais próximo de 'b'
+        - b_inf: é o valor discreto inferior mais próximo de 'b'
+        - alfa: é uma variável escolhida para que pen_sen_shunt = 0 caso 'b' pertença a 'conjunto'
+    
+    Alfa é dada por:
+        
+        alfa = pi*[ ceil{b_inf/(b_sup - b_inf)} - b_inf/(b_sup - b_inf)]
+        
+        *ceil(x) é o valor de x arredondado para o inteiro superior mais próximo
+    
+    Inputs:
+        -> alcateia 
+        -> conjunto_shunts = conjunto de valores que cada shunt de 'alcateia' pode admitir
+        
+    Outputs:
+        -> pen_shunts: um vetor cuja forma é (ns, n_lobos) contendo as penalizações referentes aos shunts para toda a alcateia
+    
+    '''
+    if DEBUG:
+        shunts = vec_debug
+        alfa = np.zeros(shape=vec_debug.shape)
+    else:
+        #Variável para receber os shunts da alcateia
+        shunts = alcateia[ng+nt:ng+nt+ns, :]
+        #A variável alfa será um vetor no formato (ns, 1)
+        alfa = np.zeros(shape=(ns, alcateia.shape[-1]))
+    
+    
+    
+    #Variáveis temporárias para armazenar b_inf's e b_sup's, obtidos pelas funções auxiliares descritas no ínicio do código
+    shunts_sup = discreto_superior(shunts, conjunto_shunts)
+    shunts_inf = discreto_inferior(shunts, conjunto_shunts)
+    
+    d = shunts_sup - shunts_inf
+    if DEBUG:
+        print('d: {}'.format(d))
+    alfa = np.pi * (np.ceil(shunts_inf/d) - shunts_inf/d)
+    
+    pen_shunts = np.sin(alfa + np.pi*(shunts/d))
+    pen_shunts = np.square(pen_shunts)
+    if not DEBUG:
+        pen_shunts = np.sum(pen_shunts, axis = 0)
+    threshold = np.less_equal(pen_shunts, 1e-12)
+    pen_shunts[threshold] = 0.0
+    
+    return pen_shunts
 
-def penalidade_senoidal_shunt(alcateia):
-    pass
-
-def inicializar_alcateia(n_lobos, parametros_rede):
+def inicializar_alcateia(n_lobos, rede, parametros_rede):
     '''
     Esta função inicializa a alcateia de lobos (agentes de busca) como uma matriz (numpy array) com formato (dim+6, n_lobos)
     
@@ -345,10 +449,6 @@ def inicializar_alcateia(n_lobos, parametros_rede):
     Output:
         -> Alcateia
     '''
-    # nb = parametros_rede["num_barras"]
-    # nt = parametros_rede["num_trafo_controlado"]
-    # ns = parametros_rede["num_shunt"]
-    # ng = parametros_rede["num_gen"]
     
     #Variável que armazena o número de variáveis do problema
     dim = ng+nt+ns
@@ -382,6 +482,9 @@ def inicializar_alcateia(n_lobos, parametros_rede):
     return alcateia
 
 
+def fluxo_de_carga(rede, agente):
+    pass
+
 def otimizar_alcateia(f_obj, pen_v, pen_tap, pen_shunt, lbd, t_max):
     pass
 
@@ -392,98 +495,13 @@ def visualizar_resultados():
 """
 ---------------------------------------------------------- TESTES ---------------------------------------------------------
 """
-def a():
-    
-    # def funcao_objetivo2(rede, params):
-    #     """
-    #     O objetivo desta função é calcular a função objetivo para o problema de FPOR.
-    #     A função objetivo deste problema dá as perdas de potência ativa no SEP.
-        
-    #     f = sum g_km * [v_k^2 + v_m^2 - 2*v_k*v_m*cos(theta_k - theta_m)]
-        
-    #     """
-    #     v_k = np.array([rede.res_bus.vm_pu[params["Linhas"][0].astype(np.int)].to_numpy(dtype=np.float64)])
-    #     v_m = np.array([rede.res_bus.vm_pu[params["Linhas"][1].astype(np.int)].to_numpy(dtype=np.float64)])
-    #     theta_k = np.radians(np.array([rede.res_bus.va_degree[params["Linhas"][0].astype(np.int)].to_numpy(dtype=np.float64)]))
-    #     theta_m = np.radians(np.array([rede.res_bus.va_degree[params["Linhas"][1].astype(np.int)].to_numpy(dtype=np.float64)]))
-    #     g = np.array([params["G"]])
-    #     #temp1 = np.power(v_k,2) + np.power(v_m,2) - 2*np.multiply(np.multiply(v_k,v_m),np.cos(theta_k-theta_m))
-    #     #temp2 = np.multiply(matriz_G, temp1)
-    #     #f=np.squeeze(np.sum(np.array([temp2[np.nonzero(temp2)]])))
-    #     f = np.square(v_k) + np.square(v_m) - 2*np.multiply(np.multiply(v_k,v_m),np.cos(theta_k-theta_m))
-    #     f = np.squeeze(np.sum(np.multiply(g,f)))
-    #     return f
-    
-    # redes = {"1": copy.copy(rede),
-    #          "2": copy.copy(rede),
-    #          "3": copy.copy(rede),
-    #          "4": copy.copy(rede),
-    #          "5": copy.copy(rede)}
-    
-    # def fluxo_sequencial(redes):
-    #     for key in redes:
-    #         pp.runpp(redes[key], algorithm='fdbx')
-    
-    # def fluxo_paralelo_multi(redes):
-    #     pp.runpp(rede, algorithm = 'fdbx')
-    
-    # def fluxo_paralelo_ray(rede):
-    #     pp.runpp(rede, algorithm='fdbx')
-    
-    
-    # t1 = time.time()
-    # fluxo_sequencial(redes)
-    # t2= time.time()
-    # print("Fluxo sequencial: " + str(t2-t1) + " s")
-    
-    # t3 = time.time()
-    # if __name__ == '__main__':
-    #     with multiprocessing.Pool(processes=num) as p:
-    #         p.map(fluxo_paralelo_multi, rop)
-    #         p.close()
-    # t4 = time.time()
-    # print("Fluxo paralelo: " + str(t4 - t3) + " s")
-    
-    
-    # rop = [(redes["1"], p1["matriz_G"]),
-    #         (redes["2"], p1["matriz_G"]),
-    #         (redes["3"], p1["matriz_G"]),
-    #         (redes["4"], p1["matriz_G"]),
-    #         (redes["5"], p1["matriz_G"])]
-    
-    # pp.runpp(rede, algorithm='fdbx')
-    
-    
-    # a = funcao_objetivo2(rede, r1)
-    # b = funcao_objetivo(rede, r1["matriz_G"])
-    # print(a==b)
-    
-    # t_1 = []
-    # for i in range(1000):
-    #     t11 = timeit.default_timer()
-    #     funcao_objetivo(rede, r1["matriz_G"])
-    #     t12 = timeit.default_timer()
-    #     t1= t12-t11
-    #     t_1.append(t1)
-    # vec = min(t_1)
-    # print("F_obj 1: " + str(vec) + " s")
-    
-    # t_2 = []
-    # for j in range(1000):
-    #     t21 = timeit.default_timer()
-    #     funcao_objetivo2(rede, r1)
-    #     t22 = timeit.default_timer()
-    #     t2= t22-t21
-    #     t_2.append(t2)
-    # vec2 = min(t_2)
-    # print("F_obj 2: " + str(vec2) + " s")
-    return 0
 
-# rede = pn.case14()
-# r1 = gerenciar_rede(rede)
-# pp.runpp(rede, algorithm='fdbx')
-# alcateia = inicializar_alcateia(12, r1)
-
+'''
+rede = pn.case14()
+r1 = gerenciar_rede(rede)
+pp.runpp(rede, algorithm='fdbx')
+alcateia = inicializar_alcateia(12, r1)
+'''
 
 
 
