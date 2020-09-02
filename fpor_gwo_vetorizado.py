@@ -278,7 +278,9 @@ def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     """
     E função  calcula a função objetivo para o problema de FPOR e também calcula
     a penalização das tensões que ultrapassam o limite superior ou ficam abaixo do limite
-    inferior.
+    inferior para cada agente de busca.
+    
+    Esta função não é vetorizada para toda a alcateia
     
     A função objetivo deste problema dá as perdas de potência ativa no SEP.
     
@@ -290,10 +292,17 @@ def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
         v_lim = v_lim_sup, se v > v_lim_sup
         v_lim = v, se v_lim_inf < v < v_lim_sup
         v_lim = v_lim_inf, se v < v_lim_inf
+        
+    Inputs:
+        -> rede = sistema elétrico de testes
+        -> matriz_G = matriz de condutância nodal do sistema
+        -> v_lim_sup = vetor contendo os limites superiores de tensão nas barras do sistema
+        -> v_lim_inf = vetor contendo os limites inferiores de tensão nas barras do sistema
+    Outputs:
+        -> f = função objetivo do problema de FPOR
+        -> pen_v = penalidade de violação dos limites de tensão das barras
     
     """
-    #Talvez tenha uma melhor implementação de pen_v
-    
     
     v_k = np.array([rede.res_bus.vm_pu.to_numpy(dtype = np.float64)])
     v_m = v_k.T
@@ -301,26 +310,23 @@ def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     theta_k = np.radians(np.array([rede.res_bus.va_degree.to_numpy(dtype = np.float64)]))
     theta_m = theta_k.T
     
+    #Calculo da função objetivo
     f = np.power(v_k,2) + np.power(v_m,2) - 2*np.multiply(np.multiply(v_k,v_m),np.cos(theta_k-theta_m))
-    
     f = np.multiply(matriz_G, f)
-    
     f=np.squeeze(np.sum(np.array([f[np.nonzero(f)]])))
     
-    #Tensões que ultrapassaram o limite superior
-    v_up = np.multiply(v_k, np.greater(v_k, v_lim_sup))
+    #Calculo da penalidade das tensões
     
-    #Limites ultrapassados
-    v_lim_up = np.multiply(v_lim_sup, np.greater(v_k, v_lim_sup))
+    #Violação do limite superior (v - v_lim), v > v_lim_sup
+    v_up = v_k - v_lim_sup
+    v_up = v_up[np.greater(v_up, 0.0)]
     
-    #Tensões que estão abaixo do limite inferior
-    v_down = np.multiply(v_k, np.less(v_k, v_lim_inf))
+    #Violação do limite inferior (v-v_lim), v < v_lim_inf
+    v_down = v_k - v_lim_inf
+    v_down = v_down[np.less(v_down, 0.0)]
     
-    #Limites violados
-    v_lim_down = np.multiply(v_lim_inf, np.greater(v_k, v_lim_inf))
-    
-    pen_v = np.squeeze(np.sum(np.square(v_up - v_lim_up) + np.square(v_down - v_lim_down)))
-    
+    pen_v = np.squeeze(np.sum(np.square(v_up)) + np.sum(np.square(v_down)))
+
     return f, pen_v
 
 
