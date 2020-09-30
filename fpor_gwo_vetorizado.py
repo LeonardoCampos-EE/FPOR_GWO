@@ -1,10 +1,14 @@
 import numpy as np
-import pandapower as pp
-import pandapower.networks as pn
 import timeit
 import copy
+import pandapower as pp
+from pandapower.networks import case14
+import matplotlib.pyplot as plt
 
+rede = case14()
 
+#Executar o fluxo de carga uma primeira vez acelera os cálculos posteriores
+pp.runpp(rede, algorithm = 'nr', numba = True)
 '''--------------------------------------------- Funções auxiliares ---------------------------------------------------'''
 
 
@@ -432,35 +436,38 @@ def penalidade_senoidal_shunt(conjunto_shunts, alcateia = None, DEBUG = False, v
     return pen_shunts
 
 def inicializar_alcateia(n_lobos, rede, parametros_rede):
+    def inicializar_alcateia(n_lobos, rede, parametros_rede):
     '''
-    Esta função inicializa a alcateia de lobos (agentes de busca) como uma matriz (numpy array) com formato (dim+6, n_lobos)
+    Esta função inicializa a alcateia de lobos (agentes de busca) como uma matriz (numpy array) com formato (dim+5, n_lobos)
     
         -> Cada coluna da matriz representa um lobo.
-        -> As linhas de 0 a dim são as variáveis do problema.
-        -> A linha dim+1 armazena a função fitness para cada lobo;
-        -> A linha dim+2 armazena a função objetivo para cada lobo;
-        -> A linha dim+3 armazena um caracter que indica a posição hierárquica do lobo:
-            + 1 = lobo alfa;
-            + 2 = lobo beta;
-            + 3 = lobo delta;
-            + 4 = lobo omega.
-        -> A linha dim+4 armazena a penalidade dos taps para cada lobo;
-        -> A linha dim+5 armazena a penalidade dos shunts para cada lobo;
-        -> A linha dim+6 armazena a penalidade das tensões para cada lobo;
+        -> As linhas de 0 a dim-1 são as variáveis do problema.
+        -> A linha dim armazena a função objetivo para cada lobo;
+        -> A linha dim+1 armazena a penalidade das tensões para cada lobo;
+        -> A linha dim+2 armazena a penalidade dos taps para cada lobo;
+        -> A linha dim+3 armazena a penalidade dos shunts para cada lobo;  
+        -> A linha dim+4 armazena a função fitness para cada lobo;
+        
         
     Inputs:
         -> n_lobos = número de agentes de busca;
+        -> rede
         -> parametros_rede - obtido via função gerenciar_rede
     
     Output:
         -> Alcateia
     '''
     
-    #Variável que armazena o número de variáveis do problema
-    dim = ng+nt+ns
+    '''
+    Variável que armazena o número de variáveis do problema.
+    ng = número de barras geradoras do sistema;
+    nt = número de transformadores com controle de tap do sistema;
+    ns = número de susceptâncias shunt do sistema.
+    '''
+    dim = ng + nt+ ns
     
     #Inicialização da Alcateia com zeros
-    alcateia = np.zeros((dim+6, n_lobos))
+    alcateia = np.zeros(shape = (dim+5, n_lobos), dtype = np.float32)
     
     #Inicialização aleatória das variáveis contínuas (tensões das barras geradoras) a partir de uma distribuição normal
     alcateia[:ng, :] = np.random.uniform(rede.bus.min_vm_pu[0], rede.bus.max_vm_pu[1], size=(ng,n_lobos))
@@ -473,23 +480,96 @@ def inicializar_alcateia(n_lobos, rede, parametros_rede):
     for i in range(ns):
         alcateia[ng+nt+i, :] = np.random.choice(parametros_rede["Valores_shunts"][str(nb)][i], size = (ns,n_lobos))
     
-    #Inicializar a função fitness e a função objetivo de cada lobo
-    alcateia[dim:dim+2, :] = np.inf
+    #Inicializar a função objetivo, as funções de penalização e a função fitness de cada lobo
+    alcateia[dim:dim+5, :] = 0.0
     
-    #Inicializar a posição de cada lobo como delta
-    alcateia[dim+2, :] = 4
     
-    #Inicializar as penalidades de cada lobo
-    alcateia[dim+3:, :] = 0
-    
-    #Inserir o lobo_1
+    #Inserir o lobo w_1 com os valores do ponto de operação da rede 
     alcateia[:dim, 0] = parametros_rede["Lobo1"]
     
     return alcateia
 
 
-def fluxo_de_carga(rede, agente):
-    pass
+def fluxo_de_carga(rede, alcateia, conjunto_shunts):
+    '''
+    Esta função executa o fluxo de carga para todos os lobos da alcateia utilizando a função 'runpp' da biblioteca
+    PandaPower, alterando as posições de todos os lobos para a região factível do problema de FPOR.
+    Após executar o fluxo para cada lobo, a função objetivo e as penalidades são calculadas e inseridas na alcateia, que
+    depois será otimizada.
+    
+    Inputs:
+        -> alcateia
+        -> rede
+        -> parametros_rede
+    Outputs:
+        -> alcateia
+    '''
+    
+    '''
+    Variável que armazena o número de variáveis do problema.
+    ng = número de barras geradoras do sistema;
+    nt = número de transformadores com controle de tap do sistema;
+    ns = número de susceptâncias shunt do sistema.
+    '''
+    dim = ng + nt+ ns
+    
+    #Loop sobre cada lobo (linha da alcateia transposta) para executar o fluxo de carga
+    #Infelizmente enquanto utilizar o PandaPower, é impossível se livrar deste loop
+    alcateia_transposta = alcateia.T
+    for indice_lobo, lobo in enumerate(alcateia_transposta):
+        v_lobo = lobo[:ng]
+        taps_lobo = lobo[ng:ng+nt]
+        shunts_lobo = lobo[ng+nt:ng+nt+ns]
+        
+        #Inserindo as tensões das barras de geração na rede
+        rede.gen.vm_pu = v_lobo
+        
+        #Inserindo os taps dos transformadores
+        '''
+        Os taps dos transformadores devem ser inseridos como valores de posição, 
+        e não como seu valor em pu. Para converter de pu para posição é utilizada a seguinte equação:
+        
+            tap_pos = [(tap_pu - 1)*100]/tap_step_percent] + tap_neutral
+    
+        O valor tap_mid_pos é 0 no sistema de 14 barras
+        '''
+        rede.trafo.tap_pos[:nt] = rede.trafo.tap_neutral[:nt] + ((taps_lobo - 1.0)*(100/rede.trafo.tap_step_percent[:nt]))
+        
+        #Inserindo as susceptâncias shunt
+        """
+        A unidade de susceptância shunt no pandapower é MVAr e seu sinal é negativo. 
+        Para transformar de pu para MVAr negativo basta multiplicar por -100
+        """
+        rede.shunt.q_mvar = shunts_lobo*(-100)
+        
+        #Soluciona o fluxo de carga utilizando o algoritmo Newton-Raphson
+        pp.runpp(rede, algorithm = 'nr', numba = True, init = 'results')
+        
+        #Recebendo os valores das tensões das barras, taps e shunts e armazenando no lobo    
+        v_lobo = rede.res_gen.vm_pu.to_numpy(dtype = np.float32)
+
+        #Recebendo a posição dos taps e convertendo pra pu
+        taps_lobo = 1 + ((rede.trafo.tap_pos[:nt] - rede.trafo.tap_neutral[:nt])*(rede.trafo.tap_step_percent[:nt]/100))
+        
+        #Recebendo o valor da susceptância shunt e convertendo para pu
+        shunts_lobo = rede.res_shunt.q_mvar.to_numpy(dtype = np.float32)/(-100) 
+        
+        #Atualizando o lobo
+        lobo[:ng] = v_lobo
+        lobo[ng:ng+nt] = taps_lobo
+        lobo[ng+nt:ng+nt+ns] = shunts_lobo
+        
+        lobo[dim], lobo[dim + 1] = funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf)
+        
+        alcateia_transposta[indice_lobo] = lobo
+    
+    alcateia = alcateia_transposta.T
+    
+    alcateia[dim + 2, :] = penalidade_senoidal_tap(alcateia = alcateia)
+    alcateia[dim + 3, :] = penalidade_senoidal_shunt(conjunto_shunts = conjunto_shunts, alcateia = alcateia)
+    alcateia[-1, :] = np.sum(alcateia[dim+1:dim+4, :], axis = 0, keepdims=True)
+    
+    return alcateia
 
 def otimizar_alcateia(f_obj, pen_v, pen_tap, pen_shunt, lbd, t_max):
     pass
@@ -503,11 +583,9 @@ def visualizar_resultados():
 """
 
 '''
-rede = pn.case14()
 r1 = gerenciar_rede(rede)
 pp.runpp(rede, algorithm='fdbx')
-alcateia = inicializar_alcateia(12, r1)
+alcateia = inicializar_alcateia(12, rede, r1)
 '''
-
 
 
