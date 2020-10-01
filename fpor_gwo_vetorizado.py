@@ -436,7 +436,6 @@ def penalidade_senoidal_shunt(conjunto_shunts, alcateia = None, DEBUG = False, v
     return pen_shunts
 
 def inicializar_alcateia(n_lobos, rede, parametros_rede):
-    def inicializar_alcateia(n_lobos, rede, parametros_rede):
     '''
     Esta função inicializa a alcateia de lobos (agentes de busca) como uma matriz (numpy array) com formato (dim+5, n_lobos)
     
@@ -490,7 +489,7 @@ def inicializar_alcateia(n_lobos, rede, parametros_rede):
     return alcateia
 
 
-def fluxo_de_carga(rede, alcateia, conjunto_shunts):
+def fluxo_de_carga(rede, alcateia, conjunto_shunts, lambd = 100):
     '''
     Esta função executa o fluxo de carga para todos os lobos da alcateia utilizando a função 'runpp' da biblioteca
     PandaPower, alterando as posições de todos os lobos para a região factível do problema de FPOR.
@@ -500,7 +499,7 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts):
     Inputs:
         -> alcateia
         -> rede
-        -> parametros_rede
+        -> conjunto_shunts
     Outputs:
         -> alcateia
     '''
@@ -511,7 +510,8 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts):
     nt = número de transformadores com controle de tap do sistema;
     ns = número de susceptâncias shunt do sistema.
     '''
-    dim = ng + nt+ ns
+    dim = ng + nt + ns
+    
     
     #Loop sobre cada lobo (linha da alcateia transposta) para executar o fluxo de carga
     #Infelizmente enquanto utilizar o PandaPower, é impossível se livrar deste loop
@@ -560,18 +560,20 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts):
         lobo[ng+nt:ng+nt+ns] = shunts_lobo
         
         lobo[dim], lobo[dim + 1] = funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf)
+        lobo[dim + 1] = lambd*lobo[dim + 1]
         
         alcateia_transposta[indice_lobo] = lobo
     
     alcateia = alcateia_transposta.T
     
-    alcateia[dim + 2, :] = penalidade_senoidal_tap(alcateia = alcateia)
-    alcateia[dim + 3, :] = penalidade_senoidal_shunt(conjunto_shunts = conjunto_shunts, alcateia = alcateia)
-    alcateia[-1, :] = np.sum(alcateia[dim+1:dim+4, :], axis = 0, keepdims=True)
+    alcateia[dim + 2, :] = lambd*penalidade_senoidal_tap(alcateia = alcateia)
+    alcateia[dim + 3, :] = lambd/10*penalidade_senoidal_shunt(conjunto_shunts = conjunto_shunts, alcateia = alcateia)
+    alcateia[-1, :] = np.sum(alcateia[dim:-1, :], axis = 0, keepdims=True)
     
     return alcateia
 
-def otimizar_alcateia(alcateia, t_max = 10):
+import time
+def otimizar_alcateia(alcateia, parametros_rede, t_max = 10):
     '''
     Esta função executa o algoritmo Grey Wolf Optimizer (GWO) na alcateia dada, de forma a obter uma solução 
     para o problema de FPOR com variáveis discretas.
@@ -595,18 +597,44 @@ def otimizar_alcateia(alcateia, t_max = 10):
     dim = ng + nt + ns
     n_lobos = alcateia.shape[1]
     
-    melhor_alfa = alcateia[:, 0]
-    melhor_alfa[-1] = np.inf
+    #Variávies para armazenar os limites superior e inferior das variáveis do problema
+    v_max = rede.bus.max_vm_pu.to_numpy(dtype = np.float32)[:ng]
+    v_min = rede.bus.min_vm_pu.to_numpy(dtype = np.float32)[:ng]
+    
+    tap_max = np.repeat(parametros_rede['Valores_taps'][-1], nt)
+    tap_min = np.repeat(parametros_rede['Valores_taps'][0], nt)
+    
+    shunt_max = conjunto_shunts[0][-1]
+    shunt_min = conjunto_shunts[0][0]
+    
+    #np.expand_dims é usado para transformar o shape de lim_sup e lim_inf de (8,) para (8,1)
+    lim_sup = np.expand_dims(np.concatenate((v_max, tap_max, shunt_max), axis = None), -1)
+    lim_inf = np.expand_dims(np.concatenate((v_min, tap_min, shunt_min), axis = None), -1)
+    #np.tile é usado para repetir lim_sup e lim_inf de forma a ter o mesmo formato das variáveis da alcateia (dim, n_lobos)
+    lim_sup = np.tile(lim_sup, (1, n_lobos))
+    lim_inf = np.tile(lim_inf, (1, n_lobos))
+    
+    del v_max, v_min, tap_max, tap_min, shunt_max, shunt_min
     
     curva_f = []
     curva_pen = []
     curva_fitness = []
     
+    #Retornar as variáveis da alcateia para seus limites
+    np.clip(alcateia[:dim, :], a_min = lim_inf, a_max = lim_sup, out = alcateia[:dim, :])
+    
+    
+    #Inicio da contagem de tempo de execução do algoritmo
+    timer_inicio_algoritmo = time.time()
+    
     #Loop do algoritmo
     for t in range(t_max):
         
+        #Inicio da contagem de tempo da iteração
+        timer_inicio_iteracao = time.time()
+        
         #Variável a(t)
-        a = 2 - 2*t/t_max
+        a = 2 - (t*(2/t_max))
         
         '''
         As variáveis r1 e r2 são matrizes de formato (dim, n_lobos), inicializadas implicitamente dentro de A e C através
@@ -614,11 +642,11 @@ def otimizar_alcateia(alcateia, t_max = 10):
         aleatórios (numa distribuição gaussiana) dentro de [0, 1] 
         '''
         #Variáveis A, C, r1 e r2
-        A = 2*a*np.random.random_sample(size = (dim, n_lobos)) - a
-        C = 2*np.random.random_sample(size = (dim, n_lobos))
+        r1 = np.random.random_sample(size = (dim, n_lobos))
+        r2 = np.random.random_sample(size = (dim, n_lobos))
+        A = 2*a*r1 - a
+        C = 2*r2
         
-        #Retornar as variáveis da alcateia para seus limites
-        #TODO
         
         #Rodar o fluxo de carga
         #Por enquanto só serve pro sistema de 14 barras
@@ -636,22 +664,43 @@ def otimizar_alcateia(alcateia, t_max = 10):
             -> Lobo Delta = alcateia [:, 2]
         '''
         #Ordenando a alcateia e determinando os lobos alfa, beta e delta.
-        alcateia = alcateia[::, alcateia[-1, :].argsort()]
+        alcateia = alcateia[:, alcateia[-1, :].argsort()]
         
-        #Lobo alfa completo (com f, penalizações e fitness)
-        alfa_completo = alcateia[:, 0].copy()
+        '''
+        - alfa_completo, beta_completo e delta_completo são os lobos alfa, beta e delta contendo f, penalizações e fitness
+        - alfa, beta e delta são apenas variáveis do problema destes lobos
         
+        Na primemeira iteração, não há alfa, beta e delta ainda. Logo, estes lobos são inicilizados
+        a partir da alcateia ordenada.
+        '''
+        #Inicializando alfa, beta e delta na primeira iteração
+        if (t == 0):
+            alfa_completo = alcateia[:, 0].copy()
+            beta_completo = alcateia[:, 1].copy()
+            delta_completo = alcateia[:, 2].copy()
+            
+            alfa = np.expand_dims(alcateia[:dim, 0].copy(), -1)
+            beta = np.expand_dims(alcateia[:dim, 1].copy(), -1)
+            delta = np.expand_dims(alcateia[:dim, 2].copy(), -1)
+        
+        #Atualizando alfa, beta e delta
+        if (alcateia[-1, 0]) < alfa_completo[-1]:
+            alfa_completo = alcateia[:, 0].copy()
+            alfa = np.expand_dims(alcateia[:dim, 0].copy(), -1)
+            
+        if (alcateia[-1, 1]) < beta_completo[-1]:
+            beta_completo = alcateia[:, 1].copy()
+            beta = np.expand_dims(alcateia[:dim, 1].copy(), -1)
+        
+        if (alcateia[-1, 2]) < delta_completo[-1]:
+            delta_completo = alcateia[:, 2].copy()
+            delta = np.expand_dims(alcateia[:dim, 2].copy(), -1)
+    
         #Armazenando f, as penalizações e a fitness do alfa da iteração t nas respectivas listas
         curva_f.append(alfa_completo[dim])
         curva_fitness.append(alfa_completo[-1])
         curva_pen.append(alfa_completo[-1] - alfa_completo[dim])
         
-        if alfa_completo[-1] < melhor_alfa[-1]:
-            melhor_alfa = alfa_completo
-        
-        alfa = alcateia[:dim, 0].copy()
-        beta = alcateia[:dim, 1].copy()
-        delta = alcateia[:dim, 2].copy()
         
         #D_alfa, D_beta e D_delta
         D_alfa = np.abs(np.multiply(C, alfa) - alcateia[:dim, :])
@@ -665,10 +714,28 @@ def otimizar_alcateia(alcateia, t_max = 10):
         
         alcateia[:dim, :] = (X_alfa + X_beta + X_delta)/3
         
-    resultados = {'alfa': melhor_alfa,
+        #Retornar as variáveis da alcateia para seus limites
+        np.clip(alcateia[:dim, :], a_min = lim_inf, a_max = lim_sup, out = alcateia[:dim, :])
+        
+        #Fim da contagem de tempo da iteração
+        timer_fim_iteracao = time.time()
+        
+        tempo_iteracao = timer_fim_iteracao - timer_inicio_iteracao
+        
+        print('Iteração: {}. Melhor fitness: {}. Melhor f: {}. Tempo: {}s'.format(t, alfa_completo[-1], alfa_completo[dim],
+                                                                                 tempo_iteracao))
+    
+    timer_fim_algoritmo = time.time()
+    
+    tempo_algoritmo =  timer_fim_algoritmo - timer_inicio_algoritmo
+    
+    print('Tempo total de execução: {}s'.format(tempo_algoritmo))
+    
+    resultados = {'alfa': alfa_completo,
                  'f': curva_f,
                  'pen': curva_pen,
-                 'fitness': curva_fitness}
+                 'fitness': curva_fitness,
+                 'tempo': tempo_algoritmo}
     
     return alcateia, resultados
 
