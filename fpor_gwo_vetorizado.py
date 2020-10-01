@@ -571,8 +571,106 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts):
     
     return alcateia
 
-def otimizar_alcateia(f_obj, pen_v, pen_tap, pen_shunt, lbd, t_max):
-    pass
+def otimizar_alcateia(alcateia, t_max = 10):
+    '''
+    Esta função executa o algoritmo Grey Wolf Optimizer (GWO) na alcateia dada, de forma a obter uma solução 
+    para o problema de FPOR com variáveis discretas.
+    
+    Inputs:
+        -> alcateia
+        -> t_max: número máximo de iterações do algoritmo
+    
+    Outputs:
+        -> alcateia: retorna a alcateia após as iterações do algoritmo.
+        -> resultados: dicionário contendo os seguintes itens:
+            - curva_f: uma lista contendo a função objetivo do lobo alfa para cada
+            iteração;
+            - curva_pen: uma lista contendo a soma das penalizações do lobo alfa para cada
+            iteração;
+            - curva_fitness: uma lista  contendo a função fitness do lobo alfa para cada
+            iteração;
+            - melhor_alfa: uma numpy array de shape = (dim+5, 1) contendo o lobo alfa com a melhor fitness obtida;
+            
+    '''
+    dim = ng + nt + ns
+    n_lobos = alcateia.shape[1]
+    
+    melhor_alfa = alcateia[:, 0]
+    melhor_alfa[-1] = np.inf
+    
+    curva_f = []
+    curva_pen = []
+    curva_fitness = []
+    
+    #Loop do algoritmo
+    for t in range(t_max):
+        
+        #Variável a(t)
+        a = 2 - 2*t/t_max
+        
+        '''
+        As variáveis r1 e r2 são matrizes de formato (dim, n_lobos), inicializadas implicitamente dentro de A e C através
+        da função np.random.random_sample(size = (dim, n_lobos)), que retorna uma matriz de formato 'size' com números
+        aleatórios (numa distribuição gaussiana) dentro de [0, 1] 
+        '''
+        #Variáveis A, C, r1 e r2
+        A = 2*a*np.random.random_sample(size = (dim, n_lobos)) - a
+        C = 2*np.random.random_sample(size = (dim, n_lobos))
+        
+        #Retornar as variáveis da alcateia para seus limites
+        #TODO
+        
+        #Rodar o fluxo de carga
+        #Por enquanto só serve pro sistema de 14 barras
+        alcateia = fluxo_de_carga(rede, alcateia, conjunto_shunts[0])
+        
+        '''
+        Para determinar os lobos alfa, beta e delta, basta ordenar a alcateia através de uma operação de 'sort' em relação
+        à linha da função fitness (alcateia [-1, :]).
+        Para tal, utiliza-se o método argsort() da biblioteca numpy na linha alcateia[-1, :]. Este método retorna os índices
+        das colunas da alcateia que a deixariam ordenada em relação a esta linha. Depois, basta utilizar estes índices para
+        obter a alcateia ordenada
+        De forma que:
+            -> Lobo Alfa = alcateia[:, 0]
+            -> Lobo Beta = alcateia[:, 1]
+            -> Lobo Delta = alcateia [:, 2]
+        '''
+        #Ordenando a alcateia e determinando os lobos alfa, beta e delta.
+        alcateia = alcateia[::, alcateia[-1, :].argsort()]
+        
+        #Lobo alfa completo (com f, penalizações e fitness)
+        alfa_completo = alcateia[:, 0].copy()
+        
+        #Armazenando f, as penalizações e a fitness do alfa da iteração t nas respectivas listas
+        curva_f.append(alfa_completo[dim])
+        curva_fitness.append(alfa_completo[-1])
+        curva_pen.append(alfa_completo[-1] - alfa_completo[dim])
+        
+        if alfa_completo[-1] < melhor_alfa[-1]:
+            melhor_alfa = alfa_completo
+        
+        alfa = alcateia[:dim, 0].copy()
+        beta = alcateia[:dim, 1].copy()
+        delta = alcateia[:dim, 2].copy()
+        
+        #D_alfa, D_beta e D_delta
+        D_alfa = np.abs(np.multiply(C, alfa) - alcateia[:dim, :])
+        D_beta = np.abs(np.multiply(C, beta) - alcateia[:dim, :])
+        D_delta = np.abs(np.multiply(C, delta) - alcateia[:dim, :])
+        
+        #X_alfa, X_beta, X_delta
+        X_alfa = alfa - np.multiply(A, D_alfa)
+        X_beta = beta - np.multiply(A, D_beta)
+        X_delta = delta - np.multiply(A, D_delta)
+        
+        alcateia[:dim, :] = (X_alfa + X_beta + X_delta)/3
+        
+    resultados = {'alfa': melhor_alfa,
+                 'f': curva_f,
+                 'pen': curva_pen,
+                 'fitness': curva_fitness}
+    
+    return alcateia, resultados
 
 def visualizar_resultados():
     pass
