@@ -276,7 +276,14 @@ def gerenciar_rede(rede):
                        "matriz_G": matriz_G}
 
     return parametros_rede
-    
+
+#Algumas variáveis que depois serão eliminadas daqui
+parametros_rede = gerenciar_rede(rede)
+conjunto_shunts = parametros_rede["Valores_shunts"][str(nb)]
+matriz_G = parametros_rede["matriz_G"]
+v_lim_sup = rede.bus.max_vm_pu.to_numpy(dtype = np.float32)
+v_lim_inf = rede.bus.min_vm_pu.to_numpy(dtype = np.float32)
+
 
 def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     """
@@ -739,8 +746,109 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10):
     
     return alcateia, resultados
 
-def visualizar_resultados():
-    pass
+"""
+---------------------------------------------------------- Visualização ---------------------------------------------------------
+"""
+
+#Biblioteca os para salvar os gráficos e tabelas obtidos no disco rígido
+import os
+
+#Biblioteca PyPlot da MatplotLib para gerar todos os gráficos
+import matplotlib.pyplot as plt
+
+#Bibliotea Tabulate para gerar a tabela contendo as variáveis discretas do sistema
+import tabulate
+
+#Biblioteca pandapower.plotting para gerar o grafo do sistema elétrico
+import pandapower.plotting as pplot
+
+def sistema_viz(alfa, rede):
+    '''
+    Esta função gera um gráfico de pontos (scatter plot) mostrando os níveis de tensão e ângulos de tensão de 
+    todas as barras do sistema; gera uma visualização do sistema elétrico correspondente na forma de um grafo; 
+    gera também uma tabela contendo os valores das variáveis discretas obtidas.
+    
+    Inputs:
+        -> alfa: melhor lobo alfa obtido após o fim da execução do algoritmo.
+        -> rede
+        
+    Outputs:
+        -> v_plot: gráfico scatter contendo os níveis de tensão das barras do sistema;
+        -> ang_plot: gráfico scatter contendo os ângulos de tensão das barras do sistema;
+        -> sis_graph: visualização do sistema elétrico na forma de um grafo;
+        -> tabela_discretos: string contendo a tabela das variáveis discretas no formato latex
+    '''
+    
+    #Executar um fluxo de carga com o alfa dado para obter os valores das tensões e ângulos das barras do sistema
+    
+    v_alfa = alfa[:ng]
+    taps_alfa = alfa[ng:ng+nt]
+    shunts_alfa = alfa[ng+nt:ng+nt+ns]
+    
+    #Inserindo as tensões das barras de geração na rede
+    rede.gen.vm_pu = v_alfa
+        
+    #Inserindo os taps dos transformadores
+    '''
+    Os taps dos transformadores devem ser inseridos como valores de posição, 
+    e não como seu valor em pu. Para converter de pu para posição é utilizada a seguinte equação:
+    
+        tap_pos = [(tap_pu - 1)*100]/tap_step_percent] + tap_neutral
+    
+    O valor tap_mid_pos é 0 no sistema de 14 barras
+    '''
+    rede.trafo.tap_pos[:nt] = rede.trafo.tap_neutral[:nt] + ((taps_alfa - 1.0)*(100/rede.trafo.tap_step_percent[:nt]))
+        
+    #Inserindo as susceptâncias shunt
+    """
+    A unidade de susceptância shunt no pandapower é MVAr e seu sinal é negativo. 
+    Para transformar de pu para MVAr negativo basta multiplicar por -100
+    """
+    rede.shunt.q_mvar = shunts_alfa*(-100)
+    
+    pp.runpp(rede, algorithm = 'nr', numba = True, init = 'results')
+    
+    #Obtendo as tensões e ângulos das barras do sistema
+    tensoes = rede.res_bus.vm_pu.to_numpy(dtype = np.float32)
+    angulos = rede.res_bus.va_degree.to_numpy(dtype = np.float32)
+    
+    #Gráfico das tensões
+    v_plot = plt.figure(figsize=(0.56*20,0.56*10))
+    barras = np.arange(1, nb+1, step = 1)
+    plt.scatter(barras, tensoes, marker = 'o', figure = v_plot)
+    plt.xlabel('Barras', figure = v_plot)
+    plt.ylabel('Nível de tensão (pu)', figure = v_plot)
+    plt.grid(True, figure = v_plot)
+    plt.xticks(barras, figure = v_plot)
+    plt.yticks(np.arange(rede.bus.min_vm_pu.to_numpy(dtype = np.float32)[0], 
+                        rede.bus.max_vm_pu.to_numpy(dtype = np.float32)[0]+0.01,
+                        step = 0.01),
+              figure = v_plot)
+    
+    #Gráfico dos ângulos
+    ang_plot = plt.figure(figsize=(0.56*20,0.56*10))
+    plt.scatter(barras, angulos, marker = 'o', figure = ang_plot)
+    plt.xlabel('Barras', figure = ang_plot)
+    plt.ylabel(r'Angulos de tensão ($^o$)', figure = ang_plot)
+    plt.grid(True, figure = ang_plot)
+    plt.xticks(barras, figure = ang_plot)
+    
+    #Grafo do sistema elétrico
+    sis_graph = pplot.simple_plot(rede)
+    
+    #Tabela com as variáveis discretas
+    table = []
+    for idx, tap in enumerate(taps_alfa):
+        table.append(['t_' + str(rede.trafo.hv_bus[idx]+1) + '-' + str(rede.trafo.lv_bus[idx]+1)
+                      , tap])
+    del idx
+    for idx, shunt in enumerate(shunts_alfa):
+        table.append(['b^sh_' + str(rede.shunt.bus[idx] + 1), shunt])
+    
+    table = tabulate.tabulate(table, headers = ['Variáveis discretas', 'Valores (pu)'], tablefmt="psql")
+    print(table)
+    
+    return v_plot, ang_plot, sis_graph, table
 
 
 """
