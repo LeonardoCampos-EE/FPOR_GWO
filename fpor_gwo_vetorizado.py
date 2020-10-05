@@ -931,6 +931,8 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
         tabela_estatistica: tabela contendo a análise estatística dos resultados.
     '''
 
+    dim = ng + nt + ns
+
     #Listas para armazenar o melhor alfa e o resultado de cada execução
     alfas = []
     resultados = []
@@ -949,17 +951,17 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
     resultados = np.asarray(resultados)
    
     #Indice[0] é o índice do melhor alfa obtido
-    indice = np.unravel_index(np.argmin(alfas, axis=None), alfas.shape)
-    melhor_alfa = alfas[indice[0]]
-    melhor_resultado = resultados[indice[0]]
+    indice = np.argmin(alfas, axis = 0)[dim]
+    melhor_alfa = alfas[indice]
+    melhor_resultado = resultados[indice]
 
     sistema_viz(melhor_resultado, rede)
     alg_viz(melhor_resultado)
 
     #Análise estatística
-    f_medio = np.mean(alfas, axis = 0)[ng+nt+ns]
-    f_max = np.max(alfas, axis = 0)[ng+nt+ns]
-    desvio_padrao = np.std(alfas, axis = 0)[ng+nt+ns]
+    f_medio = np.mean(alfas, axis = 0)[dim]
+    f_max = np.amax(alfas, axis = 0)[dim]
+    desvio_padrao = np.std(alfas, axis = 0)[dim]
 
     tabela_estatistica = [
         ['f_medio', f_medio],
