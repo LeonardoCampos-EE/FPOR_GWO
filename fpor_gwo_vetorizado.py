@@ -580,7 +580,7 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts, lambd = 100):
     return alcateia
 
 import time
-def otimizar_alcateia(alcateia, parametros_rede, t_max = 10):
+def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
     '''
     Esta função executa o algoritmo Grey Wolf Optimizer (GWO) na alcateia dada, de forma a obter uma solução 
     para o problema de FPOR com variáveis discretas.
@@ -729,12 +729,18 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10):
         
         tempo_iteracao = timer_fim_iteracao - timer_inicio_iteracao
         
-        print('Iteração: {}. Melhor fitness: {}. Melhor f: {}. Tempo: {}s'.format(t, alfa_completo[-1], alfa_completo[dim],
-                                                                                 tempo_iteracao))
-    
+        if verbose == True:
+            print('Iteração: {}. Melhor fitness: {}. Melhor f: {}. Tempo: {}s'.format(t, alfa_completo[-1], alfa_completo[dim],
+                                                                                     tempo_iteracao))
+        else:
+            if t == t_max - 1:
+                print('Iteração: {}. Melhor fitness: {}. Melhor f: {}. Tempo: {}s'.format(t, alfa_completo[-1], alfa_completo[dim],
+                                                                                     tempo_iteracao))
+
     timer_fim_algoritmo = time.time()
     
     tempo_algoritmo =  timer_fim_algoritmo - timer_inicio_algoritmo
+    
     
     print('Tempo total de execução: {}s'.format(tempo_algoritmo))
     
@@ -762,14 +768,14 @@ import tabulate
 #Biblioteca pandapower.plotting para gerar o grafo do sistema elétrico
 import pandapower.plotting as pplot
 
-def sistema_viz(alfa, rede):
+def sistema_viz(resultados, rede):
     '''
     Esta função gera um gráfico de pontos (scatter plot) mostrando os níveis de tensão e ângulos de tensão de 
     todas as barras do sistema; gera uma visualização do sistema elétrico correspondente na forma de um grafo; 
     gera também uma tabela contendo os valores das variáveis discretas obtidas.
     
     Inputs:
-        -> alfa: melhor lobo alfa obtido após o fim da execução do algoritmo.
+        -> resultados: saída da função otimizar_alcateia
         -> rede
         
     Outputs:
@@ -779,6 +785,9 @@ def sistema_viz(alfa, rede):
         -> tabela_discretos: string contendo a tabela das variáveis discretas no formato latex
     '''
     
+    #Extrai o lobo alfa da entrada 'resultados'
+    alfa = resultados['alfa']
+
     #Executar um fluxo de carga com o alfa dado para obter os valores das tensões e ângulos das barras do sistema
     
     v_alfa = alfa[:ng]
@@ -851,14 +860,128 @@ def sistema_viz(alfa, rede):
     return v_plot, ang_plot, sis_graph, table
 
 
-"""
----------------------------------------------------------- TESTES ---------------------------------------------------------
-"""
+def alg_viz(resultados):
+    '''
+    Esta função gera gráficos da convergência do algoritmo GWO, mostrando a variação da função objetivo, 
+    da função fitness e das penalizações ao longo das iterações;
 
-'''
-r1 = gerenciar_rede(rede)
-pp.runpp(rede, algorithm='fdbx')
-alcateia = inicializar_alcateia(12, rede, r1)
-'''
+    inputs:
+        -> resultados: saída da função otimizar_alcateia.
+    outputs:
+        -> f_conv_plot: gráfico da convergência da função objetivo;
+        -> fit_conv_plot: gráfico da convergência da função fitness;
+        -> pen_conv_plot: gráfico da variação da soma das funções penalidade do lobo alfa a cada iteração.
+    '''
+    '''
+    resultados = {'alfa': alfa_completo,
+                 'f': curva_f,
+                 'pen': curva_pen,
+                 'fitness': curva_fitness,
+                 'tempo': tempo_algoritmo}
+    '''
 
+    f_conv = resultados['f']
+    fit_conv = resultados['fitness']
+    pen_conv = resultados['pen']
+    t_max = len(f_conv)
 
+    #Iterações
+    t = np.arange(t_max)
+
+    #Gráfico da convergência da função objetivo
+    f_conv_plot = plt.figure(figsize=(0.56*20,0.56*10))
+    plt.xlabel('Iterações', figure = f_conv_plot)
+    plt.ylabel(r'$f (V, \theta, t)$', figure = f_conv_plot)
+    plt.plot(t, f_conv, figure = f_conv_plot)
+    plt.grid(True, figure = f_conv_plot)
+    plt.xticks(np.arange(t_max + int(t_max/10), step = int(t_max/10)), figure = f_conv_plot)
+    
+    #Gráfico da convergência da função fitness
+    fit_conv_plot = plt.figure(figsize=(0.56*20,0.56*10))
+    plt.xlabel('Iterações', figure = fit_conv_plot)
+    plt.ylabel(r'$fitness (V, \theta, t, b^{sh})$', figure = fit_conv_plot)
+    plt.plot(t, fit_conv, figure = fit_conv_plot)
+    plt.grid(True, figure = fit_conv_plot)
+    plt.xticks(np.arange(t_max + int(t_max/10), step = int(t_max/10)), figure = fit_conv_plot)
+
+    #Gráfico da variação da soma das funções penalidade do lobo alfa a cada iteração.
+    pen_conv_plot = plt.figure(figsize=(0.56*20,0.56*10))
+    plt.xlabel('Iterações', figure = pen_conv_plot)
+    plt.ylabel(r'$P_{sen}(t) + P_{sen}(b^{sh}) + P_V(V_{B_{CR}})$', figure = pen_conv_plot)
+    plt.plot(t, pen_conv, figure = pen_conv_plot)
+    plt.grid(True, figure = pen_conv_plot)
+    plt.xticks(np.arange(t_max + int(t_max/10), step = int(t_max/10)), figure = pen_conv_plot)
+
+    return f_conv_plot, fit_conv_plot, pen_conv_plot
+
+def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
+    '''
+    Executa o algoritmo GWO para solucionar o problema de FPOR com variáveis discretas 'n_execucoes' vezes.
+    Dada a natureza estocástica do algoritmo meta-heurísitco GWO, cada execução do mesmo gera resultados diferentes.
+    Assim sendo, é interessante executá-lo diversas vezes para obter a melhor solução possível.
+    Além de fazer isso, esta função também realiza uma análise estatística dos resultados obtidos.
+
+    inputs:
+        n_execucoes: número desejado de execuções do algoritmo.
+    
+    outputs:
+        melhor_alfa: melhor lobo alfa (melhor solução) obtido em todas as execuções;
+        saída da função sistema_viz para a melhor solução obtida;
+        saída da função alg_viz para a melhor solução obtida.
+        tabela_estatistica: tabela contendo a análise estatística dos resultados.
+    '''
+
+    #Listas para armazenar o melhor alfa e o resultado de cada execução
+    alfas = []
+    resultados = []
+
+    parametros_rede = gerenciar_rede(rede)
+
+    for execucao in range(n_execucoes):
+        alcateia = inicializar_alcateia(n_lobos, rede, parametros_rede)
+        _, resultado = otimizar_alcateia(alcateia, parametros_rede, t_max = t_max, verbose = False)
+        alfas.append(resultado['alfa'])
+        resultados.append(resultado)
+    del execucao
+
+    #Melhor solução (alfa) dentre todas as execuções:
+    alfas = np.asarray(alfas)
+    resultados = np.asarray(resultados)
+   
+    #Indice[0] é o índice do melhor alfa obtido
+    indice = np.unravel_index(np.argmin(alfas, axis=None), alfas.shape)
+    melhor_alfa = alfas[indice[0]]
+    melhor_resultado = resultados[indice[0]]
+
+    sistema_viz(melhor_resultado, rede)
+    alg_viz(melhor_resultado)
+
+    #Análise estatística
+    f_medio = np.mean(alfas, axis = 0)[ng+nt+ns]
+    f_max = np.max(alfas, axis = 0)[ng+nt+ns]
+    desvio_padrao = np.std(alfas, axis = 0)[ng+nt+ns]
+
+    tabela_estatistica = [
+        ['f_medio', f_medio],
+        ['f_max', f_max],
+        ['desvio_padrao', desvio_padrao]]
+
+    tabela_estatistica = tabulate.tabulate(tabela_estatistica, headers = ['Estatísica', 'Valor'], tablefmt="psql")
+    print(tabela_estatistica)
+
+    # Dados do melhor alfa
+    tabela_alfa = [
+        ['t_max', t_max],
+        ['f (MW)', melhor_alfa[ng+nt+ns]*100],
+        ['Pen_v(V)', melhor_alfa[ng+nt+ns+1]],
+        ['Pen_sen(t)', melhor_alfa[ng+nt+ns+2]],
+        ['Pen_sen(t)', melhor_alfa[ng+nt+ns+3]],
+        ['Tempo (s)', melhor_resultado['tempo']]
+    ]
+
+    tabela_alfa = tabulate.tabulate(tabela_alfa, headers=['Dados', 'Valores'], tablefmt='psql')
+    print(tabela_alfa)
+
+    return melhor_alfa, tabela_estatistica, tabela_alfa, alfas, resultados
+
+print('Test')
