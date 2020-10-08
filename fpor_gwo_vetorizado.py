@@ -1,5 +1,5 @@
 import numpy as np
-import timeit
+import time
 import copy
 import pandapower as pp
 from pandapower.networks import case14
@@ -37,7 +37,8 @@ def discreto_superior(vetor_x, lista_discretos):
     Garante que os valores de 'vetor_x' estejam dentro dos limites de 'lista discretos' por um pequeno fator de 10^-3.
     Caso contrário, a função numpy.searchsorted descrita a frente resultará em erro.
     '''
-    np.clip(a = vetor, a_min = lista[0]+1e-3, a_max = lista[-1]-1e-3, out = vetor)
+    vetor = vetor - 1e-3
+    np.clip(a = vetor, a_min = lista[0] + 1e-3, a_max = lista[-1] - 1e-3, out = vetor)
     
     '''
     Utilizando a função numpy.searchsorted() para buscar os índices de 'lista_discretos' que correspondem aos valores
@@ -80,7 +81,8 @@ def discreto_inferior(vetor_x, lista_discretos):
     Caso contrário, a função numpy.searchsorted descrita a frente resultará em erro. Salva o resultado de numpy.clip
     na variável local 'vetor'
     '''
-    np.clip(a = vetor, a_min = lista_discretos[0]+1e-3, a_max = lista_discretos[-1]-1e-3, out = vetor)
+    vetor = vetor - 1e-3
+    np.clip(a = vetor, a_min = lista_discretos[0] + 1e-3, a_max = lista_discretos[-1] - 1e-3, out = vetor)
     
     '''
     Utilizando a função numpy.searchsorted() para buscar os índices de 'lista_discretos' que correspondem aos valores
@@ -131,8 +133,6 @@ def gerenciar_rede(rede):
     rede.shunt = rede.shunt.sort_index()
     rede.trafo = rede.trafo.sort_index()
     
-    
-    
     #num_trafo_controlado: variavel para armazenar o número de trafos com controle de tap
     num_trafo_controlado = rede.trafo.tap_pos.count()
     
@@ -148,7 +148,6 @@ def gerenciar_rede(rede):
     '''
     Cria as varíaveis globais nb, nt, ns, ng para facilitar o uso desses parâmetros em outros funções
     
-    *Potencialmente desastroso*
     '''
     global nb, nt, ns, ng
     nb, nt, ns, ng = num_barras, num_trafo_controlado, num_shunt, num_gen
@@ -158,46 +157,109 @@ def gerenciar_rede(rede):
         min_vm_pu: 0.94 -> 0.90
         max_vm_pu: 1.06 -> 1.10
     '''
-    if num_barras == 118 or num_barras == 300:
+    if nb == 118 or nb == 300:
         rede.bus.min_vm_pu = 0.90
         rede.bus.max_vm_pu = 1.10
     
     #Dicionário que contem os valores dos shunts para cada sistema IEEE
-    valores_shunts = {"14": [[0, 0.19, 0.34, 0.39]],
-                      "30": [[0, 0.19, 0.34, 0.39],
-                             [0, 0.05, 0.09]],
-                      "57": [[0, 0.12, 0.22, 0.27], 
-                             [0, 0.04, 0.07, 0.09], 
-                             [0, 0.1, 0.165]],
-                      "118": [[-0.4, 0],
-                              [0, 0.06, 0.07, 0.13, 0.14, 0.2],
-                              [-0.25, 0],
-                              [0, 0.1],
-                              [0, 0.1],
-                              [0, 0.1],
-                              [0, 0.15],
-                              [0, 0.08, 0.12, 0.2],
-                              [0, 0.1, 0.2],
-                              [0, 0.1, 0.2],
-                              [0, 0.1, 0.2],
-                              [0, 0.1, 0.2],
-                              [0, 0.06, 0.07, 0.13, 0.14, 0.2],
-                              [0, 0.06, 0.07, 0.13, 0.14, 0.2]],
-                      "300": [[0, 2, 3.5, 4.5],
-                              [0, 0.25, 0.44, 0.59],
-                              [0, 0.19, 0.34, 0.39],
-                              [-4.5, 0],
-                              [-4.5, 0],
-                              [0, 0.25, 0.44, 0.59],
-                              [0, 0.25, 0.44, 0.59],
-                              [-2.5, 0],
-                              [-4.5, 0],
-                              [-4.5, 0],
-                              [-1.5, 0],
-                              [0, 0.25, 0.44, 0.59],
-                              [0, 0,15],
-                              [0, 0.15]]
+    valores_shunts = {"14": np.array([
+                            [0.0, 0.19, 0.34, 0.39]
+                            ]),
+                      
+                      "30": np.array([
+                            [0.0, 0.19, 0.34, 0.39],
+                            [0.0, 0.0, 0.05, 0.09]
+                            ]),
+                      
+                      "57": np.array([
+                            [0.0, 0.12, 0.22, 0.27], 
+                            [0.0, 0.04, 0.07, 0.09], 
+                            [0.0, 0.0, 0.10, 0.165]
+                            ]),
+                      
+                      "118": np.array([
+                              [-0.4, 0.0, 0.0, 0.0, 0.0, 0.0],
+                              [0.0, 0.06, 0.07, 0.13, 0.14, 0.2],
+                              [-0.25, 0.0, 0.0, 0.0, 0.0, 0.0],
+                              [0.0, 0.0, 0.0, 0.0, 0.0, 0.1],
+                              [0.0, 0.0, 0.0, 0.0, 0.0, 0.1],
+                              [0.0, 0.0, 0.0, 0.0, 0.0, 0.1],
+                              [0.0, 0.0, 0.0, 0.0, 0.0, 0.15],
+                              [0.0, 0.0, 0.0, 0.08, 0.12, 0.2],
+                              [0.0, 0.0, 0.0, 0.0, 0.1, 0.2],
+                              [0.0, 0.0, 0.0, 0.0, 0.1, 0.2],
+                              [0.0, 0.0, 0.0, 0.0, 0.1, 0.2],
+                              [0.0, 0.0, 0.0, 0.0, 0.1, 0.2],
+                              [0.0, 0.06, 0.07, 0.13, 0.14, 0.2],
+                              [0.0, 0.06, 0.07, 0.13, 0.14, 0.2]
+                              ]),
+                      
+                      "300": np.array([
+                              [0.0, 2.0, 3.5, 4.5],
+                              [0.0, 0.25, 0.44, 0.59],
+                              [0.0, 0.19, 0.34, 0.39],
+                              [-4.5, 0.0, 0.0, 0.0],
+                              [-4.5, 0.0, 0.0, 0.0],
+                              [0.0, 0.25, 0.44, 0.59],
+                              [0.0, 0.25, 0.44, 0.59],
+                              [-2.5, 0.0, 0.0, 0.0],
+                              [-4.5, 0.0, 0.0, 0.0],
+                              [-4.5, 0.0, 0.0, 0.0],
+                              [-1.5, 0.0, 0.0, 0.0],
+                              [0.0, 0.25, 0.44, 0.59],
+                              [0.0, 0.0, 0.0, 0.15],
+                              [0.0, 0.0, 0.0, 0.15]
+                              ])
                       }
+    
+    mask_shunts = {
+        '14': np.array([
+              [0.25, 0.25, 0.25, 0.25]
+        ]),
+        '30': np.array([
+              [0.25, 0.25, 0.25, 0.25],
+              [0.0, 1./3., 1./3., 1./3.]
+              ]),
+        '57': np.array([
+              [0.25, 0.25, 0.25, 0.25], 
+              [0.25, 0.25, 0.25, 0.25], 
+              [0.0, 1./3., 1./3., 1./3.]
+              ]),
+        '118': np.array([
+              [0.5, 0.5, 0.0, 0.0, 0.0, 0.0],
+              [1./6., 1./6., 1./6., 1./6., 1./6., 1./6.],
+              [0.5, 0.5, 0.0, 0.0, 0.0, 0.0],
+              [0.0, 0.0, 0.0, 0.0, 0.5, 0.5],
+              [0.0, 0.0, 0.0, 0.0, 0.5, 0.5],
+              [0.0, 0.0, 0.0, 0.0, 0.5, 0.5],
+              [0.0, 0.0, 0.0, 0.0, 0.5, 0.5],
+              [0.0, 0.0, 0.25, 0.25, 0.25, 0.25],
+              [0.0, 0.0, 0.0, 1./3., 1./3., 1./3.],
+              [0.0, 0.0, 0.0, 1./3., 1./3., 1./3.],
+              [0.0, 0.0, 0.0, 1./3., 1./3., 1./3.],
+              [0.0, 0.0, 0.0, 1./3., 1./3., 1./3.],
+              [1./6., 1./6., 1./6., 1./6., 1./6., 1./6.],
+              [1./6., 1./6., 1./6., 1./6., 1./6., 1./6.]
+              ]),
+        '300': np.array([
+              [0.25, 0.25, 0.25, 0.25],
+              [0.25, 0.25, 0.25, 0.25],
+              [0.25, 0.25, 0.25, 0.25],
+              [0.5, 0.5, 0.0, 0.0],
+              [0.5, 0.5, 0.0, 0.0],
+              [0.25, 0.25, 0.25, 0.25],
+              [0.25, 0.25, 0.25, 0.25],
+              [0.5, 0.5, 0.0, 0.0],
+              [0.5, 0.5, 0.0, 0.0],
+              [0.5, 0.5, 0.0, 0.0],
+              [0.5, 0.5, 0.0, 0.0],
+              [0.25, 0.25, 0.25, 0.25],
+              [0.0, 0.0, 0.5, 0.5],
+              [0.0, 0.0, 0.5, 0.5]
+              ])
+    }
+
+    
     
     #Vetor que contém os valores discretos dos taps: entre 0.9 e 1.1 com passo = tap_step
     #Precisa ser um tensor de rank 1 para que a alcateia possa ser inicializada
@@ -245,39 +307,27 @@ def gerenciar_rede(rede):
     e armazenar no vetor lobo_1
     """
     
-    v_temp = rede.gen.vm_pu.to_numpy(dtype = 'float64')
+    v_temp = rede.gen.vm_pu.to_numpy(dtype = np.float32)
     
-    taps_temp = 1 + ((rede.trafo.tap_pos.to_numpy()[0:num_trafo_controlado] +\
-                      rede.trafo.tap_neutral.to_numpy()[0:num_trafo_controlado]) *\
-                     (rede.trafo.tap_step_percent.to_numpy()[0:num_trafo_controlado]/100))
+    taps_temp = 1 + ((rede.trafo.tap_pos.to_numpy(dtype = np.float32)[0:num_trafo_controlado] +\
+                      rede.trafo.tap_neutral.to_numpy(dtype = np.float32)[0:num_trafo_controlado]) *\
+                     (rede.trafo.tap_step_percent.to_numpy(dtype = np.float32)[0:num_trafo_controlado]/100))
         
-    shunt_temp = -rede.shunt.q_mvar.to_numpy()/100
+    shunt_temp = -rede.shunt.q_mvar.to_numpy(dtype = np.float32)/100
     
     lobo_1 = np.array([np.concatenate((v_temp, taps_temp, shunt_temp),axis=0)])
     del v_temp, taps_temp, shunt_temp
-      
+    
     parametros_rede = {"Linhas": linhas,
-                       "G": G_rede,
                        "Lobo1": lobo_1,
                        "Valores_shunts": valores_shunts,
                        "Valores_taps": valores_taps,
-                       "num_barras": num_barras,
-                       "num_trafo_controlado": num_trafo_controlado,
-                       "num_shunt": num_shunt,
-                       "num_gen": num_gen,
+                       "Mask_shunts": mask_shunts,
                        "matriz_G": matriz_G}
 
     return parametros_rede
 
-#Algumas variáveis que depois serão eliminadas daqui
-parametros_rede = gerenciar_rede(rede)
-conjunto_shunts = parametros_rede["Valores_shunts"][str(nb)]
-matriz_G = parametros_rede["matriz_G"]
-v_lim_sup = rede.bus.max_vm_pu.to_numpy(dtype = np.float32)
-v_lim_inf = rede.bus.min_vm_pu.to_numpy(dtype = np.float32)
-
-
-def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
+def funcao_objetivo_e_pen_v(rede, parametros_rede):
     """
     E função  calcula a função objetivo para o problema de FPOR e também calcula
     a penalização das tensões que ultrapassam o limite superior ou ficam abaixo do limite
@@ -307,6 +357,11 @@ def funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf):
     
     """
     
+    matriz_G = parametros_rede["matriz_G"]
+
+    v_lim_sup = rede.bus.max_vm_pu.to_numpy(dtype = np.float32)
+    v_lim_inf = rede.bus.min_vm_pu.to_numpy(dtype = np.float32)
+
     v_k = np.array([rede.res_bus.vm_pu.to_numpy(dtype = np.float64)])
     v_m = v_k.T
     
@@ -370,7 +425,7 @@ def penalidade_senoidal_tap(alcateia = None, DEBUG = False, vec_debug = None):
     
     return pen_taps
 
-def penalidade_senoidal_shunt(conjunto_shunts, alcateia = None, DEBUG = False, vec_debug = None):
+def penalidade_senoidal_shunt(parametros_rede, alcateia = None, DEBUG = False, vec_debug = None):
     '''
     Esta função retorna a penalidade senoidal sobre os shunts de toda a 
     alcateia.
@@ -411,15 +466,20 @@ def penalidade_senoidal_shunt(conjunto_shunts, alcateia = None, DEBUG = False, v
     else:
         #Variável para receber os shunts da alcateia
         shunts = alcateia[ng+nt:ng+nt+ns, :]
-        #A variável alfa será um vetor no formato (ns, 1)
+        #A variável alfa será um vetor no formato (ns, n_lobos)
         alfa = np.zeros(shape=(ns, alcateia.shape[-1]))
     
-    
-    
     #Variáveis temporárias para armazenar b_inf's e b_sup's, obtidos pelas funções auxiliares descritas no ínicio do código
-    shunts_sup = discreto_superior(shunts, conjunto_shunts)
-    shunts_inf = discreto_inferior(shunts, conjunto_shunts)
+    shunts_sup = np.zeros(shape = shunts.shape)
+    shunts_inf = np.zeros(shape = shunts.shape)
+
+    conjunto_shunts = parametros_rede["Valores_shunts"][str(nb)]
     
+    for idx, conjunto in enumerate(conjunto_shunts):
+        shunts_sup[idx] = discreto_superior(shunts[idx], conjunto)
+        shunts_inf[idx] = discreto_inferior(shunts[idx], conjunto)
+    del idx, conjunto
+
     d = shunts_sup - shunts_inf
     if DEBUG:
         print('d: {}'.format(d))
@@ -428,7 +488,7 @@ def penalidade_senoidal_shunt(conjunto_shunts, alcateia = None, DEBUG = False, v
     pen_shunts = np.sin(alfa + np.pi*(shunts/d))
     pen_shunts = np.square(pen_shunts)
     if not DEBUG:
-        pen_shunts = np.sum(pen_shunts, axis = 0)
+        pen_shunts = np.sum(pen_shunts, axis = 0, keepdims = True)
     threshold = np.less_equal(pen_shunts, 1e-12)
     pen_shunts[threshold] = 0.0
     
@@ -488,7 +548,7 @@ def inicializar_alcateia(n_lobos, rede, parametros_rede):
     return alcateia
 
 
-def fluxo_de_carga(rede, alcateia, conjunto_shunts, lambd = 100):
+def fluxo_de_carga(rede, alcateia, parametros_rede, lambd = 100):
     '''
     Esta função executa o fluxo de carga para todos os lobos da alcateia utilizando a função 'runpp' da biblioteca
     PandaPower, alterando as posições de todos os lobos para a região factível do problema de FPOR.
@@ -510,8 +570,7 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts, lambd = 100):
     ns = número de susceptâncias shunt do sistema.
     '''
     dim = ng + nt + ns
-    
-    
+
     #Loop sobre cada lobo (linha da alcateia transposta) para executar o fluxo de carga
     #Infelizmente enquanto utilizar o PandaPower, é impossível se livrar deste loop
     alcateia_transposta = alcateia.T
@@ -558,7 +617,7 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts, lambd = 100):
         lobo[ng:ng+nt] = taps_lobo
         lobo[ng+nt:ng+nt+ns] = shunts_lobo
         
-        lobo[dim], lobo[dim + 1] = funcao_objetivo_e_pen_v(rede, matriz_G, v_lim_sup, v_lim_inf)
+        lobo[dim], lobo[dim + 1] = funcao_objetivo_e_pen_v(rede, parametros_rede)
         lobo[dim + 1] = lambd*lobo[dim + 1]
         
         alcateia_transposta[indice_lobo] = lobo
@@ -566,12 +625,11 @@ def fluxo_de_carga(rede, alcateia, conjunto_shunts, lambd = 100):
     alcateia = alcateia_transposta.T
     
     alcateia[dim + 2, :] = lambd*penalidade_senoidal_tap(alcateia = alcateia)
-    alcateia[dim + 3, :] = lambd/10*penalidade_senoidal_shunt(conjunto_shunts = conjunto_shunts, alcateia = alcateia)
+    alcateia[dim + 3, :] = lambd/10*penalidade_senoidal_shunt(parametros_rede = parametros_rede, alcateia = alcateia)
     alcateia[-1, :] = np.sum(alcateia[dim:-1, :], axis = 0, keepdims=True)
     
     return alcateia
 
-import time
 def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
     '''
     Esta função executa o algoritmo Grey Wolf Optimizer (GWO) na alcateia dada, de forma a obter uma solução 
@@ -595,7 +653,8 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
     '''
     dim = ng + nt + ns
     n_lobos = alcateia.shape[1]
-    
+    conjunto_shunts = parametros_rede["Valores_shunts"][str(nb)]
+
     #Variávies para armazenar os limites superior e inferior das variáveis do problema
     v_max = rede.bus.max_vm_pu.to_numpy(dtype = np.float32)[:ng]
     v_min = rede.bus.min_vm_pu.to_numpy(dtype = np.float32)[:ng]
@@ -603,8 +662,8 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
     tap_max = np.repeat(parametros_rede['Valores_taps'][-1], nt)
     tap_min = np.repeat(parametros_rede['Valores_taps'][0], nt)
     
-    shunt_max = conjunto_shunts[0][-1]
-    shunt_min = conjunto_shunts[0][0]
+    shunt_max = conjunto_shunts[:,-1]
+    shunt_min = conjunto_shunts[:, 0]
     
     #np.expand_dims é usado para transformar o shape de lim_sup e lim_inf de (8,) para (8,1)
     lim_sup = np.expand_dims(np.concatenate((v_max, tap_max, shunt_max), axis = None), -1)
@@ -649,7 +708,7 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
         
         #Rodar o fluxo de carga
         #Por enquanto só serve pro sistema de 14 barras
-        alcateia = fluxo_de_carga(rede, alcateia, conjunto_shunts[0])
+        alcateia = fluxo_de_carga(rede, alcateia, parametros_rede)
         
         '''
         Para determinar os lobos alfa, beta e delta, basta ordenar a alcateia através de uma operação de 'sort' em relação
@@ -978,4 +1037,11 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
 
     return melhor_alfa, tabela_estatistica, tabela_alfa, alfas, resultados
 
+'''
+-------------------------------------------------- Testes ------------------------------------------------------
+'''
 print('Test')
+
+parametros_rede = gerenciar_rede(rede)
+alcateia = inicializar_alcateia(12, rede, parametros_rede)
+alcateia, resultados = otimizar_alcateia(alcateia, parametros_rede)
