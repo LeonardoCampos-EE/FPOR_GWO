@@ -30,9 +30,6 @@ def discreto_superior(vetor_x, lista_discretos):
     #Cópia de 'vetor_x'. Esta cópia é feita para evitar erros de alocamento dinâmico de memória.
     vetor = np.copy(vetor_x)
     
-    #GAMBIARRA SEM A QUAL O CÓDIGO NÃO FUNCIONA PROS VALORES DE 'vetor_x' que pertençam a 'lista_discretos'
-    #vetor = vetor + 1e-3
-    
     #Garante que a lista seja uma array numpy e armazena o resultado na variável 'lista'
     lista = np.asarray(lista_discretos, dtype = np.float32)
     
@@ -75,9 +72,6 @@ def discreto_inferior(vetor_x, lista_discretos):
     #Cópia de 'vetor_x'. Esta cópia é feita para evitar erros de alocamento dinâmico de memória.
     vetor = np.copy(vetor_x)
     
-    #GAMBIARRA SEM A QUAL O CÓDIGO NÃO FUNCIONA PROS VALORES DE 'vetor_x' que pertençam a 'lista_discretos'
-    #vetor = vetor - 1e-3
-    
     #Garante que a lista seja uma array numpy e salva o resultado na variável local 'lista'
     lista = np.asarray(lista_discretos, dtype = np.float32)
     
@@ -87,8 +81,6 @@ def discreto_inferior(vetor_x, lista_discretos):
     na variável local 'vetor'
     '''
     np.clip(a = vetor, a_min = lista_discretos[0]+1e-3, a_max = lista_discretos[-1]-1e-3, out = vetor)
-    '''[np.nonzero(vetor)]'''
-    
     
     '''
     Utilizando a função numpy.searchsorted() para buscar os índices de 'lista_discretos' que correspondem aos valores
