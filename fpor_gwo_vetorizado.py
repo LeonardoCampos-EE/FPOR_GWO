@@ -2,10 +2,10 @@ import numpy as np
 import time
 import copy
 import pandapower as pp
-from pandapower.networks import case14
+from pandapower.networks import case14, case_ieee30
 import matplotlib.pyplot as plt
 
-rede = case14()
+rede = case_ieee30()
 
 #Executar o fluxo de carga uma primeira vez acelera os cálculos posteriores
 pp.runpp(rede, algorithm = 'nr', numba = True)
@@ -133,6 +133,12 @@ def gerenciar_rede(rede):
     rede.shunt = rede.shunt.sort_index()
     rede.trafo = rede.trafo.sort_index()
     
+    #Algumas redes são inicializadas com taps negativos
+    rede.trafo.tap_pos = np.abs(rede.trafo.tap_pos)
+
+    #É preciso ordenar os taps para remover os transformadores sem controle de tap
+    rede.trafo = rede.trafo.sort_values('tap_pos')
+
     #num_trafo_controlado: variavel para armazenar o número de trafos com controle de tap
     num_trafo_controlado = rede.trafo.tap_pos.count()
     
@@ -536,11 +542,12 @@ def inicializar_alcateia(n_lobos, rede, parametros_rede):
     #Inicialização dos shunts das barras a partir da escolha aleatória dentro dos valores discretos permitidos
     #Não consegui escapar do loop de for aqui ainda =/
     for i in range(ns):
-        alcateia[ng+nt+i, :] = np.random.choice(parametros_rede["Valores_shunts"][str(nb)][i], size = (ns,n_lobos))
+        alcateia[ng+nt+i, :] = np.random.choice(parametros_rede["Valores_shunts"][str(nb)][i], 
+                                                p = parametros_rede['Mask_shunts'][str(nb)][i], 
+                                                size = (1, n_lobos))
     
     #Inicializar a função objetivo, as funções de penalização e a função fitness de cada lobo
     alcateia[dim:dim+5, :] = 0.0
-    
     
     #Inserir o lobo w_1 com os valores do ponto de operação da rede 
     alcateia[:dim, 0] = parametros_rede["Lobo1"]
@@ -1028,7 +1035,7 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
         ['f (MW)', melhor_alfa[ng+nt+ns]*100],
         ['Pen_v(V)', melhor_alfa[ng+nt+ns+1]],
         ['Pen_sen(t)', melhor_alfa[ng+nt+ns+2]],
-        ['Pen_sen(t)', melhor_alfa[ng+nt+ns+3]],
+        ['Pen_sen(b^sh)', melhor_alfa[ng+nt+ns+3]],
         ['Tempo (s)', melhor_resultado['tempo']]
     ]
 
@@ -1043,5 +1050,6 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
 print('Test')
 
 parametros_rede = gerenciar_rede(rede)
-alcateia = inicializar_alcateia(12, rede, parametros_rede)
-alcateia, resultados = otimizar_alcateia(alcateia, parametros_rede)
+#alcateia = inicializar_alcateia(12, rede, parametros_rede)
+#alcateia, resultados = otimizar_alcateia(alcateia, parametros_rede)
+melhor_alfa, t_stats, t_alfa, alfas, resultados = estatisticas(10, t_max = 100)
