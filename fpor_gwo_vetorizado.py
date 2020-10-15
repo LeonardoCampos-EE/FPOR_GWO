@@ -110,7 +110,8 @@ def gerenciar_rede(rede):
         -> Ordenar os parâmetros da rede (v_bus, tap, shunt, etc) por índices;
         -> Obter os transformadores com controle de tap;
         -> Gerar o vetor com os valores dos taps dos transformadores;
-        -> Gerar os vetores com os valores discretos para os shunts de cada sistema;
+        -> Gerar as matrizes com os valores discretos para os shunts de cada sistema;
+        -> Gerar as matrizes de mascaramento com as probabilidades de escolha dos shunts para cada sistema;
         -> Gerar o primeiro agente de busca (que contém as variáveis do ponto de operação do sistema);
         -> Obter as condutâncias das linhas.
         
@@ -122,7 +123,10 @@ def gerenciar_rede(rede):
         -> rede gerenciada (não devolvida, salva diretamente na variável rede);
         -> primeiro agente de buscas: lobo_1;
         -> vetor de condutâncias da rede: G_rede;
-        -> matriz das linhas de transmissao: linhas
+        -> matriz das linhas de transmissao: linhas;
+        -> vetor contendo os valores discretos para os taps: valores_taps;
+        -> matrizes contendo os valores discretos para os shunts: valores_shunts;
+        -> matrizes de mascaramento dos shunts: mask_shunts.
     """
     
     #Ordenar os índices da rede
