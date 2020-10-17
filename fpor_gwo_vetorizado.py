@@ -5,10 +5,7 @@ import pandapower as pp
 from pandapower.networks import case14, case_ieee30
 import matplotlib.pyplot as plt
 
-rede = case_ieee30()
 
-#Executar o fluxo de carga uma primeira vez acelera os cálculos posteriores
-pp.runpp(rede, algorithm = 'nr', numba = True)
 '''--------------------------------------------- Funções auxiliares ---------------------------------------------------'''
 
 
@@ -559,7 +556,7 @@ def inicializar_alcateia(n_lobos, rede, parametros_rede):
     return alcateia
 
 
-def fluxo_de_carga(rede, alcateia, parametros_rede, lambd = 100):
+def fluxo_de_carga(rede, alcateia, parametros_rede, lambd = 100.0):
     '''
     Esta função executa o fluxo de carga para todos os lobos da alcateia utilizando a função 'runpp' da biblioteca
     PandaPower, alterando as posições de todos os lobos para a região factível do problema de FPOR.
@@ -641,7 +638,7 @@ def fluxo_de_carga(rede, alcateia, parametros_rede, lambd = 100):
     
     return alcateia
 
-def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
+def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True, lambd = 100.0):
     '''
     Esta função executa o algoritmo Grey Wolf Optimizer (GWO) na alcateia dada, de forma a obter uma solução 
     para o problema de FPOR com variáveis discretas.
@@ -719,7 +716,7 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
         
         #Rodar o fluxo de carga
         #Por enquanto só serve pro sistema de 14 barras
-        alcateia = fluxo_de_carga(rede, alcateia, parametros_rede)
+        alcateia = fluxo_de_carga(rede, alcateia, parametros_rede, lambd = lambd)
         
         '''
         Para determinar os lobos alfa, beta e delta, basta ordenar a alcateia através de uma operação de 'sort' em relação
@@ -817,10 +814,6 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True):
 """
 ---------------------------------------------------------- Visualização ---------------------------------------------------------
 """
-
-#Biblioteca os para salvar os gráficos e tabelas obtidos no disco rígido
-import os
-
 #Biblioteca PyPlot da MatplotLib para gerar todos os gráficos
 import matplotlib.pyplot as plt
 
@@ -976,7 +969,7 @@ def alg_viz(resultados):
 
     return f_conv_plot, fit_conv_plot, pen_conv_plot
 
-def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
+def estatisticas(n_execucoes, n_lobos = 12, t_max = 100, lambd = 100.0):
     '''
     Executa o algoritmo GWO para solucionar o problema de FPOR com variáveis discretas 'n_execucoes' vezes.
     Dada a natureza estocástica do algoritmo meta-heurísitco GWO, cada execução do mesmo gera resultados diferentes.
@@ -1003,7 +996,7 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
 
     for execucao in range(n_execucoes):
         alcateia = inicializar_alcateia(n_lobos, rede, parametros_rede)
-        _, resultado = otimizar_alcateia(alcateia, parametros_rede, t_max = t_max, verbose = False)
+        _, resultado = otimizar_alcateia(alcateia, parametros_rede, t_max = t_max, verbose = False, lambd = lambd)
         alfas.append(resultado['alfa'])
         resultados.append(resultado)
     del execucao
@@ -1013,7 +1006,7 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
     resultados = np.asarray(resultados)
    
     #Indice[0] é o índice do melhor alfa obtido
-    indice = np.argmin(alfas, axis = 0)[dim]
+    indice = np.argmin(alfas, axis = 0)[-1]
     melhor_alfa = alfas[indice]
     melhor_resultado = resultados[indice]
 
@@ -1037,23 +1030,29 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100):
     tabela_alfa = [
         ['t_max', t_max],
         ['f (MW)', melhor_alfa[ng+nt+ns]*100],
-        ['Pen_v(V)', melhor_alfa[ng+nt+ns+1]],
-        ['Pen_sen(t)', melhor_alfa[ng+nt+ns+2]],
-        ['Pen_sen(b^sh)', melhor_alfa[ng+nt+ns+3]],
+        ['Pen_v(V)', melhor_alfa[ng+nt+ns+1]/lambd],
+        ['Pen_sen(t)', melhor_alfa[ng+nt+ns+2]/lambd],
+        ['Pen_sen(b^sh)', melhor_alfa[ng+nt+ns+3]/lambd],
         ['Tempo (s)', melhor_resultado['tempo']]
     ]
 
     tabela_alfa = tabulate.tabulate(tabela_alfa, headers=['Dados', 'Valores'], tablefmt='psql')
     print(tabela_alfa)
 
-    return melhor_alfa, tabela_estatistica, tabela_alfa, alfas, resultados
+    return melhor_alfa, tabela_estatistica, tabela_alfa, alfas, resultados, melhor_resultado
 
 '''
 -------------------------------------------------- Testes ------------------------------------------------------
 '''
 print('Test')
 
+rede = case14()
+
+#Executar o fluxo de carga uma primeira vez acelera os cálculos posteriores
+pp.runpp(rede, algorithm = 'nr', numba = True)
+
 parametros_rede = gerenciar_rede(rede)
-#alcateia = inicializar_alcateia(12, rede, parametros_rede)
-#alcateia, resultados = otimizar_alcateia(alcateia, parametros_rede)
-melhor_alfa, t_stats, t_alfa, alfas, resultados = estatisticas(10, t_max = 100)
+
+melhor_alfa, t_stats, t_alfa, alfas, resultados, melhor_resultado = estatisticas(n_execucoes = 50, n_lobos = 12, t_max = 10, lambd = 100.0)
+
+alg_viz(melhor_resultado)
