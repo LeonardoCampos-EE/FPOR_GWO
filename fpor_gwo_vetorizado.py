@@ -4,7 +4,8 @@ import copy
 import pandapower as pp
 from pandapower.networks import case14, case_ieee30
 import matplotlib.pyplot as plt
-
+rede = case14()
+pp.runpp(rede, algorithm = 'nr', numba = True)
 
 '''--------------------------------------------- Funções auxiliares ---------------------------------------------------'''
 
@@ -424,7 +425,7 @@ def penalidade_senoidal_tap(alcateia = None, DEBUG = False, vec_debug = None):
         #Executa a soma ao longo das colunas da variável taps
         pen_taps = np.sum(taps, axis=0)
     
-    threshold = np.less_equal(pen_taps, 1e-15)
+    threshold = np.less_equal(pen_taps, 1e-12)
     pen_taps[threshold] = 0.0
 
     #Deleta a variável taps
@@ -487,16 +488,16 @@ def penalidade_senoidal_shunt(parametros_rede, alcateia = None, DEBUG = False, v
         shunts_inf[idx] = discreto_inferior(shunts[idx], conjunto)
     del idx, conjunto
 
-    d = shunts_sup - shunts_inf
+    d = np.abs(shunts_sup - shunts_inf)
     if DEBUG:
         print('d: {}'.format(d))
-    alfa = np.pi * (np.ceil(shunts_inf/d) - shunts_inf/d)
+    alfa = np.pi * (np.ceil(np.abs(shunts_inf)/d) - np.abs(shunts_inf)/d)
     
     pen_shunts = np.sin(alfa + np.pi*(shunts/d))
     pen_shunts = np.square(pen_shunts)
     if not DEBUG:
         pen_shunts = np.sum(pen_shunts, axis = 0, keepdims = True)
-    threshold = np.less_equal(pen_shunts, 1e-12)
+    threshold = np.less_equal(pen_shunts, 1e-5)
     pen_shunts[threshold] = 0.0
     
     return pen_shunts
@@ -609,7 +610,7 @@ def fluxo_de_carga(rede, alcateia, parametros_rede, lambd = 100.0):
         rede.shunt.q_mvar = shunts_lobo*(-100)
         
         #Soluciona o fluxo de carga utilizando o algoritmo Newton-Raphson
-        pp.runpp(rede, algorithm = 'nr', numba = True, init = 'results')
+        pp.runpp(rede, algorithm = 'nr', numba = True, init = 'results', tolerance_mva = 1e-5)
         
         #Recebendo os valores das tensões das barras, taps e shunts e armazenando no lobo    
         v_lobo = rede.res_gen.vm_pu.to_numpy(dtype = np.float32)
@@ -626,14 +627,14 @@ def fluxo_de_carga(rede, alcateia, parametros_rede, lambd = 100.0):
         lobo[ng+nt:ng+nt+ns] = shunts_lobo
         
         lobo[dim], lobo[dim + 1] = funcao_objetivo_e_pen_v(rede, parametros_rede)
-        lobo[dim + 1] = lambd*lobo[dim + 1]
+        lobo[dim + 1] = 100.0*lobo[dim + 1]
         
         alcateia_transposta[indice_lobo] = lobo
     
     alcateia = alcateia_transposta.T
     
-    alcateia[dim + 2, :] = lambd*penalidade_senoidal_tap(alcateia = alcateia)
-    alcateia[dim + 3, :] = lambd/10*penalidade_senoidal_shunt(parametros_rede = parametros_rede, alcateia = alcateia)
+    alcateia[dim + 2, :] = 100.0*penalidade_senoidal_tap(alcateia = alcateia)
+    alcateia[dim + 3, :] = lambd*penalidade_senoidal_shunt(parametros_rede = parametros_rede, alcateia = alcateia)
     alcateia[-1, :] = np.sum(alcateia[dim:-1, :], axis = 0, keepdims=True)
     
     return alcateia
@@ -750,17 +751,18 @@ def otimizar_alcateia(alcateia, parametros_rede, t_max = 10, verbose = True, lam
             delta = np.expand_dims(alcateia[:dim, 2].copy(), -1)
         
         #Atualizando alfa, beta e delta
-        if (alcateia[-1, 0]) < alfa_completo[-1]:
-            alfa_completo = alcateia[:, 0].copy()
-            alfa = np.expand_dims(alcateia[:dim, 0].copy(), -1)
+        for i in range(0,3):
+            if (alcateia[-1, i] < alfa_completo[-1]):
+                alfa_completo = alcateia[:, 0].copy()
+                alfa = np.expand_dims(alcateia[:dim, 0].copy(), -1)
+                
+            if (alcateia[-1, i] > alfa_completo[-1] and alcateia[-1, i] < beta_completo[-1]):
+                beta_completo = alcateia[:, 1].copy()
+                beta = np.expand_dims(alcateia[:dim, 1].copy(), -1)
             
-        if (alcateia[-1, 1]) < beta_completo[-1]:
-            beta_completo = alcateia[:, 1].copy()
-            beta = np.expand_dims(alcateia[:dim, 1].copy(), -1)
-        
-        if (alcateia[-1, 2]) < delta_completo[-1]:
-            delta_completo = alcateia[:, 2].copy()
-            delta = np.expand_dims(alcateia[:dim, 2].copy(), -1)
+            if (alcateia[-1, i] > alfa_completo[-1] and alcateia[-1, i] > beta_completo[-1] and alcateia[-1, i] < delta_completo[-1]):
+                delta_completo = alcateia[:, 2].copy()
+                delta = np.expand_dims(alcateia[:dim, 2].copy(), -1)
     
         #Armazenando f, as penalizações e a fitness do alfa da iteração t nas respectivas listas
         curva_f.append(alfa_completo[dim])
@@ -1006,7 +1008,7 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100, lambd = 100.0):
     resultados = np.asarray(resultados)
    
     #Indice[0] é o índice do melhor alfa obtido
-    indice = np.argmin(alfas, axis = 0)[-1]
+    indice = np.argmin(alfas, axis = 0)[dim]
     melhor_alfa = alfas[indice]
     melhor_resultado = resultados[indice]
 
@@ -1044,15 +1046,3 @@ def estatisticas(n_execucoes, n_lobos = 12, t_max = 100, lambd = 100.0):
 '''
 -------------------------------------------------- Testes ------------------------------------------------------
 '''
-print('Test')
-
-rede = case14()
-
-#Executar o fluxo de carga uma primeira vez acelera os cálculos posteriores
-pp.runpp(rede, algorithm = 'nr', numba = True)
-
-parametros_rede = gerenciar_rede(rede)
-
-melhor_alfa, t_stats, t_alfa, alfas, resultados, melhor_resultado = estatisticas(n_execucoes = 50, n_lobos = 12, t_max = 10, lambd = 100.0)
-
-alg_viz(melhor_resultado)
